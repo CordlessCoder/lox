@@ -8,7 +8,7 @@ impl Display for Literal {
         match self {
             Nil => f.write_str("nil"),
             Bool(x) => x.fmt(f),
-            String(text) => write!(f, "\"{text:?}'\""),
+            String(text) => write!(f, "{text:?}"),
             Float(x) => x.fmt(f),
             Integer(x) => x.fmt(f),
         }

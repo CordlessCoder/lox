@@ -111,11 +111,11 @@ impl Parser<'_> {
             Err(err) => return Some(Err(err)),
         };
         while let Some(operator) =
-            self.advance_if(|t| matches!(t.value, TokenValue::Equal | TokenValue::BangEqual))
+            self.advance_if(|t| matches!(t.value, TokenValue::EqualEqual | TokenValue::BangEqual))
         {
             let line = operator.line;
             let operator = match operator.value {
-                TokenValue::Equal => BinaryOperator::Equal,
+                TokenValue::EqualEqual => BinaryOperator::Equal,
                 TokenValue::BangEqual => BinaryOperator::NotEqual,
                 _ => unreachable!(),
             };

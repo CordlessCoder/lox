@@ -5,7 +5,9 @@ mod interpreter;
 mod lex;
 mod parse;
 mod tree;
+mod types;
 use interpreter::Lox;
+use owo_colors::OwoColorize;
 
 fn repl() {
     use rustyline::{config::Configurer, error::ReadlineError, DefaultEditor};
@@ -23,11 +25,9 @@ fn repl() {
             Ok(line) => {
                 rl.add_history_entry(line.as_str()).unwrap();
                 if let Err(errors) = lox.run(&line) {
-                    eprint!("errors: ");
                     for error in &errors {
-                        eprint!("{error}; ");
+                        eprintln!("{}\n", error.bright_red());
                     }
-                    eprintln!();
                 }
             }
             Err(ReadlineError::Interrupted | ReadlineError::Eof) => {
