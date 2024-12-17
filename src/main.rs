@@ -1,8 +1,5 @@
 #![allow(dead_code)]
-use std::{
-    io::{stdin, stdout, IsTerminal, Write},
-    path::Path,
-};
+use std::path::Path;
 
 mod interpreter;
 mod lex;
@@ -11,25 +8,38 @@ mod tree;
 use interpreter::Lox;
 
 fn repl() {
-    let mut output = stdout();
-    let input = stdin();
-    let mut buf = String::new();
-    let mut lox = Lox::default();
-    let is_term = input.is_terminal();
-
-    loop {
-        if is_term {
-            write!(&mut output, "> ").unwrap();
-            output.flush().unwrap();
-        }
-
-        buf.clear();
-        input.read_line(&mut buf).unwrap();
-        if buf.is_empty() {
-            break;
-        }
-        lox.run(&buf).unwrap();
+    use rustyline::{config::Configurer, error::ReadlineError, DefaultEditor};
+    let mut rl = DefaultEditor::new().unwrap();
+    if rl.load_history("history.txt").is_err() {
+        println!("No previous history.");
     }
+    rl.set_tab_stop(4);
+    rl.set_edit_mode(rustyline::EditMode::Vi);
+    rl.set_completion_type(rustyline::CompletionType::List);
+    let mut lox = Lox::default();
+    loop {
+        let readline = rl.readline("> ");
+        match readline {
+            Ok(line) => {
+                rl.add_history_entry(line.as_str()).unwrap();
+                if let Err(errors) = lox.run(&line) {
+                    eprint!("errors: ");
+                    for error in &errors {
+                        eprint!("{error}; ");
+                    }
+                    eprintln!();
+                }
+            }
+            Err(ReadlineError::Interrupted | ReadlineError::Eof) => {
+                break;
+            }
+            Err(err) => {
+                println!("Error: {:?}", err);
+                break;
+            }
+        }
+    }
+    rl.save_history("history.txt").unwrap();
 }
 
 fn run_file(path: impl AsRef<Path>) {

@@ -15,7 +15,7 @@ impl<'s> Scanner<'s> {
         let remaining = 0..source.len();
         Scanner {
             source,
-            line: 0,
+            line: 1,
             remaining,
         }
     }
