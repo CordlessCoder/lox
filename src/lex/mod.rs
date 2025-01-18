@@ -206,7 +206,7 @@ impl Iterator for Scanner<'_> {
                         }
                     }
                 }
-                c if c.is_alphabetic() => {
+                'a'..='z' | 'A'..='Z' => {
                     while self.consume_if(|c| c.is_alphanumeric()) {}
                     let ident = self.consumed_from(&span);
                     KEYWORDS

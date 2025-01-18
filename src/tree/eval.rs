@@ -6,15 +6,15 @@ use super::expr::{BinaryExpr, BinaryOperator, Expr, Literal, UnaryExpr, UnaryOpe
 
 #[derive(Debug, Clone, Error)]
 pub enum EvalError {
-    #[error("Invalid unary operation {operator} on {val}")]
+    #[error("Invalid unary operation {operator:?} on {val:?}")]
     InvalidUnary { val: Value, operator: UnaryOperator },
-    #[error("Invalid binary operation {lhs} {operator} {rhs}")]
+    #[error("Invalid binary operation {lhs:?} {operator} {rhs:?}")]
     InvalidBinary {
         lhs: Value,
         operator: BinaryOperator,
         rhs: Value,
     },
-    #[error("Negation operation -{0} would overflow")]
+    #[error("Negation operation -{0:?} would overflow")]
     NegOverflow(i64),
     #[error("{lhs} {operator} {rhs} would overflow")]
     BinaryOverflow {
@@ -22,10 +22,10 @@ pub enum EvalError {
         operator: BinaryOperator,
         rhs: Value,
     },
-    #[error("Attempt to perform nil {0} {1}")]
-    BinaryWithNilRhs(BinaryOperator, Value),
-    #[error("Attempt to perform {1} {0} nil")]
+    #[error("Attempt to perform nil {0} {1:?}")]
     BinaryWithNilLhs(BinaryOperator, Value),
+    #[error("Attempt to perform {1:?} {0} nil")]
+    BinaryWithNilRhs(BinaryOperator, Value),
 }
 
 pub trait Eval {
