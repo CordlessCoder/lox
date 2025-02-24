@@ -4,6 +4,7 @@ use std::path::Path;
 mod interpreter;
 mod lex;
 mod parse;
+mod source;
 mod tree;
 mod types;
 use interpreter::Lox;

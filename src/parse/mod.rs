@@ -4,6 +4,7 @@ use thiserror::Error;
 
 use crate::{
     lex::{Token, TokenValue},
+    source::FilePosition,
     tree::expr::{BinaryExpr, BinaryOperator, Expr, Literal, UnaryExpr, UnaryOperator},
 };
 
@@ -113,7 +114,7 @@ impl Parser<'_> {
         while let Some(operator) =
             self.advance_if(|t| matches!(t.value, TokenValue::EqualEqual | TokenValue::BangEqual))
         {
-            let line = operator.line;
+            let line = operator.pos.line;
             let operator = match operator.value {
                 TokenValue::EqualEqual => BinaryOperator::Equal,
                 TokenValue::BangEqual => BinaryOperator::NotEqual,
@@ -150,7 +151,7 @@ impl Parser<'_> {
                     | TokenValue::LessEqual
             )
         }) {
-            let line = operator.line;
+            let line = operator.pos.line;
             let operator = match operator.value {
                 TokenValue::Greater => BinaryOperator::GreaterThan,
                 TokenValue::GreaterEqual => BinaryOperator::GreaterThanOrEqual,
@@ -183,7 +184,7 @@ impl Parser<'_> {
         while let Some(operator) =
             self.advance_if(|t| matches!(t.value, TokenValue::Minus | TokenValue::Plus))
         {
-            let line = operator.line;
+            let line = operator.pos.line;
             let operator = match operator.value {
                 TokenValue::Minus => BinaryOperator::Minus,
                 TokenValue::Plus => BinaryOperator::Plus,
@@ -214,7 +215,7 @@ impl Parser<'_> {
         while let Some(operator) =
             self.advance_if(|t| matches!(t.value, TokenValue::Slash | TokenValue::Star))
         {
-            let line = operator.line;
+            let line = operator.pos.line;
             let operator = match operator.value {
                 TokenValue::Slash => BinaryOperator::Div,
                 TokenValue::Star => BinaryOperator::Mul,
@@ -255,11 +256,15 @@ impl Parser<'_> {
     }
     fn primary(&mut self) -> Option<Result<Expr, ParserError>> {
         use crate::lex::TokenValue::*;
-        let Token { value, line, .. } = self.advance()?;
+        let Token {
+            value,
+            pos: FilePosition { line, .. },
+            ..
+        } = self.advance()?;
         Some(Ok(match value {
             Int(n) => Expr::Literal(Literal::Integer(n)),
             Float(f) => Expr::Literal(Literal::Float(f)),
-            String(s) => Expr::Literal(Literal::String(s)),
+            Text(s) => Expr::Literal(Literal::String(s)),
             Bool(b) => Expr::Literal(Literal::Bool(b)),
             Nil => Expr::Literal(Literal::Nil),
             LeftParen => {

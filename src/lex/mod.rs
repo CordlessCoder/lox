@@ -1,22 +1,25 @@
-use std::{borrow::Cow, ops::Range};
-pub struct Scanner<'s> {
+use std::{borrow::Cow, ops::Range, path::PathBuf};
+
+pub struct Lexer<'s> {
     source: Cow<'s, str>,
     remaining: Range<usize>,
-    line: usize,
+    pos: FilePosition,
 }
 mod token;
 pub use token::*;
 
-use crate::interpreter::LoxError;
+use crate::{interpreter::LoxError, source::FilePosition};
 
-impl<'s> Scanner<'s> {
-    pub fn new(source: impl Into<Cow<'s, str>>) -> Self {
+impl<'s> Lexer<'s> {
+    pub fn new(source: impl Into<Cow<'s, str>>, path: Option<PathBuf>) -> Self {
         let source = source.into();
         let remaining = 0..source.len();
-        Scanner {
+        Lexer {
             source,
-            line: 1,
             remaining,
+            pos: path
+                .map(|path| FilePosition::new().with_path(path))
+                .unwrap_or_default(),
         }
     }
     fn remaining(&self) -> &str {
@@ -27,6 +30,13 @@ impl<'s> Scanner<'s> {
     fn advance(&mut self) -> Option<char> {
         let first = self.remaining().chars().next()?;
         self.remaining.start += first.len_utf8();
+        match first {
+            '\n' => {
+                self.pos.line += 1;
+                self.pos.col = 1;
+            }
+            _ => self.pos.col += 1,
+        }
         Some(first)
     }
     fn peek(&self) -> Option<char> {
@@ -54,7 +64,7 @@ impl<'s> Scanner<'s> {
     }
     pub fn span(&self) -> Span {
         Span {
-            line: self.line,
+            pos: self.pos.clone(),
             start: self.remaining.start,
         }
     }
@@ -66,22 +76,41 @@ impl<'s> Scanner<'s> {
             .get(self.consumed_from_range(span))
             .expect("span start or remaining range start out of bounds")
     }
+    fn current_position(&self) -> FilePosition {
+        self.pos.clone()
+    }
+    fn escape(c: char) -> Option<char> {
+        Some(match c {
+            'n' => '\n',
+            'r' => '\r',
+            't' => '\t',
+            '0' => '\0',
+            '\'' => '\'',
+            '\"' => '\"',
+            '\\' => '\\',
+            _ => return None,
+        })
+    }
+    pub fn tokenize(&mut self) -> Result<Vec<Token>, LoxError> {
+        self.collect()
+    }
 }
-#[derive(Debug, Clone, Copy)]
+
+#[derive(Debug, Clone)]
 pub struct Span {
-    line: usize,
+    pos: FilePosition,
     start: usize,
 }
 
-impl Iterator for Scanner<'_> {
+impl Iterator for Lexer<'_> {
     type Item = Result<Token, LoxError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        fn capture_digits(scanner: &mut Scanner<'_>) {
-            while scanner.consume_if(|c| matches!(c, '0'..='9' | 'a'..='f' | '.')) {}
+        fn capture_digits(scanner: &mut Lexer<'_>) {
+            while scanner.consume_if(|c| matches!(c, '0'..='9' | 'a'..='f')) {}
         }
         fn try_parse_int(
-            scanner: &Scanner<'_>,
+            scanner: &Lexer<'_>,
             body: &str,
             radix: u32,
             kind: &str,
@@ -89,8 +118,8 @@ impl Iterator for Scanner<'_> {
             match i64::from_str_radix(body, radix) {
                 Ok(n) => Ok(Int(n)),
                 Err(err) => Err(LoxError::simple_error(
-                    scanner.line,
                     format!("Error while attempting to parse {kind} integer: {err}",),
+                    scanner.pos.clone(),
                 )),
             }
         }
@@ -99,26 +128,6 @@ impl Iterator for Scanner<'_> {
             let span = self.span();
 
             let value = match self.advance()? {
-                '(' => LeftParen,
-                ')' => RightParen,
-                '{' => LeftBrace,
-                '}' => RightBrace,
-                ',' => Comma,
-                '.' => Dot,
-                '-' => Minus,
-                '+' => Plus,
-                ';' => Semicolon,
-                '*' => Star,
-
-                '!' if self.match_literal("=") => BangEqual,
-                '!' => Bang,
-                '=' if self.match_literal("=") => EqualEqual,
-                '=' => Equal,
-                '<' if self.match_literal("=") => LessEqual,
-                '<' => Less,
-                '>' if self.match_literal("=") => GreaterEqual,
-                '>' => Greater,
-
                 '/' if self.match_literal("*") => {
                     match self.remaining().find("*/") {
                         Some(star) => {
@@ -127,8 +136,8 @@ impl Iterator for Scanner<'_> {
                         None => {
                             self.remaining.start = self.remaining.end;
                             return Some(Err(LoxError::simple_error(
-                                self.line,
                                 "Unterminated block comment(/* ... */)",
+                                self.pos.clone(),
                             )));
                         }
                     }
@@ -137,37 +146,52 @@ impl Iterator for Scanner<'_> {
                 '/' if !self.peek_literal("/") => Slash,
                 '/' if self.match_literal("/") => {
                     while self.consume_if(|c| c != '\n') {}
-                    self.line += 1;
                     continue;
                 }
                 quote @ ('"' | '\'') => {
+                    let mut body = String::new();
                     loop {
                         let Some(c) = self.advance() else {
                             return Some(Err(LoxError::simple_error(
-                                self.line,
                                 "Unterminated string literal.",
+                                self.pos.clone(),
                             )));
                         };
                         match c {
-                            '\n' => self.line += 1,
                             c if c == quote => break,
-                            _ => (),
+                            '\\' => {
+                                let Some(c) = self.advance() else {
+                                    // Ignore \ without following symbol as that means the string
+                                    // is unterminated
+                                    continue;
+                                };
+                                // TODO: Hex ASCII/BYTE escapes using \x41 syntax?
+                                let Some(escaped) = Self::escape(c) else {
+                                    return Some(Err(LoxError::simple_error(
+                                        "Invalid escape sequence in string literral.",
+                                        self.pos.clone(),
+                                    )));
+                                    // return Some(Err(NovaError::Lexing {
+                                    //     msg: "Invalid escape sequence in string literal.".into(),
+                                    //     note: format!("Attempted to use escape sequence \\{c}")
+                                    //         .into(),
+                                    //     position: self.current_position(),
+                                    // }));
+                                };
+                                body.push(escaped);
+                            }
+                            c => body.push(c),
                         }
                     }
 
                     let consumed = self.consumed_from(&span);
-                    let text = &consumed[1..consumed.len() - 1];
                     return Some(Ok(Token {
-                        value: TokenValue::String(text.to_string()),
+                        value: TokenValue::Text(body),
                         lexeme: consumed.to_string(),
-                        line: span.line,
+                        pos: span.pos,
                     }));
                 }
-                '\r' | ' ' | '\t' => continue,
-                '\n' => {
-                    self.line += 1;
-                    continue;
-                }
+                '\r' | ' ' | '\t' | '\n' => continue,
                 '0' if self.match_literal("b") => {
                     let body = self.span();
                     capture_digits(self);
@@ -192,15 +216,38 @@ impl Iterator for Scanner<'_> {
                         Err(err) => return Some(Err(err)),
                     }
                 }
-                '0'..='9' => {
+                c @ ('0'..='9' | '.')
+                    if c != '.' || self.peek().is_some_and(|c| c.is_ascii_digit()) =>
+                {
                     capture_digits(self);
-                    let digits = self.consumed_from(&span);
-                    match try_parse_int(self, digits, 10, "decimal") {
-                        Ok(n) => n,
-                        Err(err) => {
-                            if let Ok(float) = digits.parse() {
-                                Float(float)
-                            } else {
+                    let int_part = self.consumed_from(&span);
+
+                    let float = self.remaining().starts_with('.')
+                        && self.remaining()[1..]
+                            .chars()
+                            .next()
+                            .is_none_or(|c| !c.is_alphabetic() && c != '.');
+
+                    let float = float || c == '.';
+                    if float {
+                        // Capture .
+                        self.advance_if(|c| c == '.');
+                        // Capture rest of the digits
+                        capture_digits(self);
+                        let float = self.consumed_from(&span);
+                        match float.parse() {
+                            Ok(f) => Float(f),
+                            Err(err) => {
+                                return Some(Err(LoxError::simple_error(
+                                    format!("Invalid float literal {float}. Parsing error: {err}"),
+                                    self.pos.clone(),
+                                )));
+                            }
+                        }
+                    } else {
+                        match try_parse_int(self, int_part, 10, "decimal") {
+                            Ok(n) => n,
+                            Err(err) => {
                                 return Some(Err(err));
                             }
                         }
@@ -214,10 +261,29 @@ impl Iterator for Scanner<'_> {
                         .cloned()
                         .unwrap_or_else(|| Identifier(ident.to_string()))
                 }
+                '(' => LeftParen,
+                ')' => RightParen,
+                '{' => LeftBrace,
+                '}' => RightBrace,
+                ',' => Comma,
+                '.' => Dot,
+                '-' => Minus,
+                '+' => Plus,
+                ';' => Semicolon,
+                '*' => Star,
+
+                '!' if self.match_literal("=") => BangEqual,
+                '!' => Bang,
+                '=' if self.match_literal("=") => EqualEqual,
+                '=' => Equal,
+                '<' if self.match_literal("=") => LessEqual,
+                '<' => Less,
+                '>' if self.match_literal("=") => GreaterEqual,
+                '>' => Greater,
                 c => {
                     return Some(Err(LoxError::simple_error(
-                        self.line,
                         format!("Unexpected character: {c:?}"),
+                        self.pos.clone(),
                     )));
                 }
             };

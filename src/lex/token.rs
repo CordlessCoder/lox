@@ -69,7 +69,7 @@ pub enum TokenValue {
 
     // Literals.
     Identifier(String),
-    String(String),
+    Text(String),
     Int(i64),
     Float(f64),
     /// true
@@ -134,7 +134,7 @@ impl Display for TokenValue {
             LessEqual => "<=",
             // Literals.
             Identifier(text) => text,
-            String(text) => {
+            Text(text) => {
                 buf = format!("{text:?}");
                 &buf
             }
@@ -170,21 +170,23 @@ impl Display for TokenValue {
     }
 }
 
-use super::{Scanner, Span};
+use crate::source::FilePosition;
+
+use super::{Lexer, Span};
 #[derive(Debug, Clone)]
 pub struct Token {
     pub(crate) value: TokenValue,
     pub(crate) lexeme: String,
-    pub(crate) line: usize,
+    pub(crate) pos: FilePosition,
 }
 
 impl Token {
-    pub fn from_span(scanner: &Scanner, span: &Span, value: TokenValue) -> Self {
+    pub fn from_span(scanner: &Lexer, span: &Span, value: TokenValue) -> Self {
         let lexeme = scanner.consumed_from(span).to_string();
         Token {
-            line: span.line,
             lexeme,
             value,
+            pos: scanner.pos.clone(),
         }
     }
 }

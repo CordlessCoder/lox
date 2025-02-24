@@ -1,4 +1,4 @@
-use crate::{lex::Scanner, parse::Parser, tree::eval::Eval};
+use crate::{lex::Lexer, parse::Parser, tree::eval::Eval};
 mod error;
 pub use error::*;
 use owo_colors::OwoColorize;
@@ -10,7 +10,7 @@ impl Lox {
     pub fn run(&mut self, source: &str) -> Result<(), Vec<LoxError>> {
         let mut tokens = Vec::new();
         let mut errors = Vec::new();
-        for res in Scanner::new(source) {
+        for res in Lexer::new(source, None) {
             match res {
                 Ok(token) => tokens.push(token),
                 Err(error) => errors.push(error),
