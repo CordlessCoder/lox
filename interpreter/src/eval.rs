@@ -1,25 +1,24 @@
+use crate::LoxVm;
+use ast::{BinaryExpr, BinaryOperator, Expr, LiteralExpression, Stmt, UnaryExpr, UnaryOperator};
 use thiserror::Error;
-
-use crate::{interpreter::Lox, types::Value};
-
-use super::expr::{BinaryExpr, BinaryOperator, Expr, Literal, UnaryExpr, UnaryOperator};
+use vm_types::Value;
 
 #[derive(Debug, Clone, Error)]
 pub enum EvalError {
-    #[error("Invalid unary operation {operator:?} on {val:?}")]
-    InvalidUnary { val: Value, operator: UnaryOperator },
-    #[error("Invalid binary operation {lhs:?} {operator} {rhs:?}")]
+    #[error("Invalid unary operation {op:?} on {val:?}")]
+    InvalidUnary { val: Value, op: UnaryOperator },
+    #[error("Invalid binary operation {lhs:?} {op} {rhs:?}")]
     InvalidBinary {
         lhs: Value,
-        operator: BinaryOperator,
+        op: BinaryOperator,
         rhs: Value,
     },
     #[error("Negation operation -{0:?} would overflow")]
     NegOverflow(i64),
-    #[error("{lhs} {operator} {rhs} would overflow")]
+    #[error("{lhs} {op} {rhs} would overflow")]
     BinaryOverflow {
         lhs: Value,
-        operator: BinaryOperator,
+        op: BinaryOperator,
         rhs: Value,
     },
     #[error("Attempt to perform nil {0} {1:?}")]
@@ -29,14 +28,35 @@ pub enum EvalError {
 }
 
 pub trait Eval {
-    fn eval(self, lox: &mut Lox) -> Result<Value, EvalError>;
+    fn eval(self, lox: &mut LoxVm) -> Result<Value, EvalError>;
 }
 
-impl Eval for Expr {
-    fn eval(self, lox: &mut Lox) -> Result<Value, EvalError> {
+impl Eval for Stmt<'_> {
+    fn eval(self, lox: &mut LoxVm) -> Result<Value, EvalError> {
+        use Stmt::*;
+        match self {
+            Expr(v) => {
+                v.eval(lox)?;
+                Ok(Value::Nil)
+            }
+            Print { value } => {
+                let val = value.eval(lox)?;
+                println!("{val}");
+                Ok(Value::Nil)
+            }
+            other => {
+                unimplemented!("evaluation of {other:?} is not yet supported")
+            }
+        }
+    }
+}
+
+impl Eval for Expr<'_> {
+    fn eval(self, lox: &mut LoxVm) -> Result<Value, EvalError> {
         use Expr::*;
         match self {
-            Literal(lit) => lit.eval(lox),
+            Ident(i) => unimplemented!(),
+            Lit(lit) => lit.eval(lox),
             Unary(unary) => unary.eval(lox),
             Grouped(group) => group.eval(lox),
             Binary(bin) => bin.eval(lox),
@@ -44,11 +64,11 @@ impl Eval for Expr {
     }
 }
 
-impl Eval for BinaryExpr {
-    fn eval(self, lox: &mut Lox) -> Result<Value, EvalError> {
+impl Eval for BinaryExpr<'_> {
+    fn eval(self, lox: &mut LoxVm) -> Result<Value, EvalError> {
         fn try_int_float_casts<R>(
             lhs: Value,
-            operator: BinaryOperator,
+            op: BinaryOperator,
             rhs: Value,
             int_cb: impl FnOnce(i64, i64) -> R,
             float_cb: impl FnOnce(f64, f64) -> R,
@@ -59,26 +79,22 @@ impl Eval for BinaryExpr {
             if let (Some(lhs), Some(rhs)) = (lhs.as_float(), rhs.as_float()) {
                 return Ok(float_cb(lhs, rhs));
             }
-            Err(EvalError::InvalidBinary { lhs, operator, rhs })
+            Err(EvalError::InvalidBinary { lhs, op, rhs })
         }
         use Value::*;
-        let Self {
-            left,
-            operator,
-            right,
-        } = self;
-        let lhs = left.eval(lox)?;
-        let rhs = right.eval(lox)?;
-        Ok(match operator {
-            BinaryOperator::Plus => match (lhs, rhs) {
+        let Self { lhs, op, rhs } = self;
+        let lhs = lhs.eval(lox)?;
+        let rhs = rhs.eval(lox)?;
+        Ok(match op {
+            BinaryOperator::Add => match (lhs, rhs) {
                 (Nil, Nil) => Nil,
-                (Nil, right) => return Err(EvalError::BinaryWithNilLhs(operator, right)),
-                (left, Nil) => return Err(EvalError::BinaryWithNilRhs(operator, left)),
+                (Nil, right) => return Err(EvalError::BinaryWithNilLhs(op, right)),
+                (left, Nil) => return Err(EvalError::BinaryWithNilRhs(op, left)),
 
                 (Integer(lhs), Integer(rhs)) => {
                     Integer(lhs.checked_add(rhs).ok_or(EvalError::BinaryOverflow {
                         lhs: lhs.into(),
-                        operator,
+                        op,
                         rhs: rhs.into(),
                     })?)
                 }
@@ -89,17 +105,17 @@ impl Eval for BinaryExpr {
                 (Float(f), Integer(i)) | (Integer(i), Float(f)) => Float(f + i as f64),
                 (Integer(i), Bool(b)) | (Bool(b), Integer(i)) => Integer(i + b as i64),
 
-                (lhs, rhs) => return Err(EvalError::InvalidBinary { lhs, operator, rhs }),
+                (lhs, rhs) => return Err(EvalError::InvalidBinary { lhs, op, rhs }),
             },
-            BinaryOperator::Minus => match (lhs, rhs) {
+            BinaryOperator::Sub => match (lhs, rhs) {
                 (Nil, Nil) => Nil,
-                (Nil, right) => return Err(EvalError::BinaryWithNilLhs(operator, right)),
-                (left, Nil) => return Err(EvalError::BinaryWithNilRhs(operator, left)),
+                (Nil, right) => return Err(EvalError::BinaryWithNilLhs(op, right)),
+                (left, Nil) => return Err(EvalError::BinaryWithNilRhs(op, left)),
 
                 (Integer(lhs), Integer(rhs)) => {
                     Integer(lhs.checked_sub(rhs).ok_or(EvalError::BinaryOverflow {
                         lhs: lhs.into(),
-                        operator,
+                        op,
                         rhs: rhs.into(),
                     })?)
                 }
@@ -109,17 +125,17 @@ impl Eval for BinaryExpr {
                 (Float(lhs), Integer(rhs)) => Float(lhs - rhs as f64),
                 (Integer(lhs), Float(rhs)) => Float(lhs as f64 - rhs),
 
-                (lhs, rhs) => return Err(EvalError::InvalidBinary { lhs, operator, rhs }),
+                (lhs, rhs) => return Err(EvalError::InvalidBinary { lhs, op, rhs }),
             },
             BinaryOperator::Mul => match (lhs, rhs) {
                 (Nil, Nil) => Nil,
-                (Nil, right) => return Err(EvalError::BinaryWithNilLhs(operator, right)),
-                (left, Nil) => return Err(EvalError::BinaryWithNilRhs(operator, left)),
+                (Nil, right) => return Err(EvalError::BinaryWithNilLhs(op, right)),
+                (left, Nil) => return Err(EvalError::BinaryWithNilRhs(op, left)),
 
                 (Integer(lhs), Integer(rhs)) => {
                     Integer(lhs.checked_mul(rhs).ok_or(EvalError::BinaryOverflow {
                         lhs: lhs.into(),
-                        operator,
+                        op,
                         rhs: rhs.into(),
                     })?)
                 }
@@ -130,17 +146,17 @@ impl Eval for BinaryExpr {
                 (Float(lhs), Integer(rhs)) => Float(lhs * rhs as f64),
                 (Integer(lhs), Float(rhs)) => Float(lhs as f64 * rhs),
 
-                (lhs, rhs) => return Err(EvalError::InvalidBinary { lhs, operator, rhs }),
+                (lhs, rhs) => return Err(EvalError::InvalidBinary { lhs, op, rhs }),
             },
             BinaryOperator::Div => match (lhs, rhs) {
                 (Nil, Nil) => Nil,
-                (Nil, right) => return Err(EvalError::BinaryWithNilLhs(operator, right)),
-                (left, Nil) => return Err(EvalError::BinaryWithNilRhs(operator, left)),
+                (Nil, right) => return Err(EvalError::BinaryWithNilLhs(op, right)),
+                (left, Nil) => return Err(EvalError::BinaryWithNilRhs(op, left)),
 
                 (Integer(lhs), Integer(rhs)) => {
                     Integer(lhs.checked_div(rhs).ok_or(EvalError::BinaryOverflow {
                         lhs: lhs.into(),
-                        operator,
+                        op,
                         rhs: rhs.into(),
                     })?)
                 }
@@ -150,55 +166,61 @@ impl Eval for BinaryExpr {
                 (Float(lhs), Integer(rhs)) => Float(lhs / rhs as f64),
                 (Integer(lhs), Float(rhs)) => Float(lhs as f64 / rhs),
 
-                (lhs, rhs) => return Err(EvalError::InvalidBinary { lhs, operator, rhs }),
+                (lhs, rhs) => return Err(EvalError::InvalidBinary { lhs, op, rhs }),
             },
-            BinaryOperator::LessThan => Bool(try_int_float_casts(
+            BinaryOperator::Lt => Bool(try_int_float_casts(
                 lhs,
-                operator,
+                op,
                 rhs,
                 |a, b| a < b,
                 |a, b| a < b,
             )?),
-            BinaryOperator::GreaterThan => Bool(try_int_float_casts(
+            BinaryOperator::Gt => Bool(try_int_float_casts(
                 lhs,
-                operator,
+                op,
                 rhs,
                 |a, b| a > b,
                 |a, b| a > b,
             )?),
-            BinaryOperator::LessThanOrEqual => Bool(try_int_float_casts(
+            BinaryOperator::Le => Bool(try_int_float_casts(
                 lhs,
-                operator,
+                op,
                 rhs,
                 |a, b| a <= b,
                 |a, b| a <= b,
             )?),
-            BinaryOperator::GreaterThanOrEqual => Bool(try_int_float_casts(
+            BinaryOperator::Ge => Bool(try_int_float_casts(
                 lhs,
-                operator,
+                op,
                 rhs,
                 |a, b| a >= b,
                 |a, b| a >= b,
             )?),
-            BinaryOperator::Equal => Bool(lhs == rhs),
-            BinaryOperator::NotEqual => Bool(lhs != rhs),
+            BinaryOperator::Eq => Bool(lhs == rhs),
+            BinaryOperator::Ne => Bool(lhs != rhs),
+            BinaryOperator::And => {
+                Value::Bool(lhs.as_bool().unwrap_or_default() && rhs.as_bool().unwrap_or_default())
+            }
+            BinaryOperator::Or => {
+                Value::Bool(lhs.as_bool().unwrap_or_default() || rhs.as_bool().unwrap_or_default())
+            }
         })
     }
 }
 
-impl Eval for UnaryExpr {
-    fn eval(self, lox: &mut Lox) -> Result<Value, EvalError> {
-        let UnaryExpr { operator, expr } = self;
+impl Eval for UnaryExpr<'_> {
+    fn eval(self, lox: &mut LoxVm) -> Result<Value, EvalError> {
+        let UnaryExpr { op, val } = self;
         use Value::*;
-        let val = expr.eval(lox)?;
-        Ok(match operator {
+        let val = val.eval(lox)?;
+        Ok(match op {
             UnaryOperator::Not => match val {
                 Integer(n) => Integer(!n),
                 Bool(b) => Bool(!b),
                 Nil => Bool(true),
-                _ => return Err(EvalError::InvalidUnary { val, operator }),
+                _ => return Err(EvalError::InvalidUnary { val, op }),
             },
-            UnaryOperator::Minus => match val {
+            UnaryOperator::Neg => match val {
                 Nil => Integer(0),
                 Integer(n) => {
                     let Some(n) = n.checked_neg() else {
@@ -209,20 +231,23 @@ impl Eval for UnaryExpr {
                 Bool(true) => Integer(-1),
                 Bool(false) => Integer(0),
                 Float(f) => Float(-f),
-                _ => return Err(EvalError::InvalidUnary { val, operator }),
+                _ => return Err(EvalError::InvalidUnary { val, op }),
             },
         })
     }
 }
 
-impl Eval for Literal {
-    fn eval(self, _: &mut Lox) -> Result<Value, EvalError> {
+impl Eval for LiteralExpression<'_> {
+    fn eval(self, _: &mut LoxVm) -> Result<Value, EvalError> {
+        use LiteralExpression::*;
         Ok(match self {
-            Literal::Nil => Value::Nil,
-            Literal::Bool(b) => Value::Bool(b),
-            Literal::Float(f) => Value::Float(f),
-            Literal::Integer(n) => Value::Integer(n),
-            Literal::String(s) => Value::String(s),
+            Nil => Value::Nil,
+            Bool(b) => Value::Bool(b),
+            Float(f) => Value::Float(f),
+            // TODO: Proper char runtime types
+            Char(c) => Value::Integer(c as i64),
+            Int(n) => Value::Integer(n),
+            Str(s) => Value::String(s.into_owned()),
         })
     }
 }

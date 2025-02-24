@@ -1,6 +1,16 @@
 use super::Value;
 
 impl Value {
+    pub fn as_bool(&self) -> Option<bool> {
+        use Value::*;
+        Some(match self {
+            &Bool(b) => b,
+            &Integer(n) => n != 0,
+            &Float(n) => n != 0.0,
+            Nil => false,
+            _ => return None,
+        })
+    }
     pub fn as_int(&self) -> Option<i64> {
         use Value::*;
         Some(match self {
