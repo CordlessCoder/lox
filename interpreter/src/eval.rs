@@ -1,3 +1,5 @@
+use std::collections::hash_map::Entry;
+
 use crate::LoxVm;
 use ast::{
     BinaryExpr, BinaryOperator, Decl, Expr, LiteralExpression, Stmt, UnaryExpr, UnaryOperator,
@@ -83,6 +85,15 @@ impl<'s> Eval<'s> for Expr<'s> {
             Unary(unary) => unary.eval(lox),
             Grouped(group) => group.eval(lox),
             Binary(bin) => bin.eval(lox),
+            Assignment(assignment) => {
+                let ast::Assignment { target, val } = *assignment;
+                let val = val.eval(lox)?;
+                match lox.global_variables.entry(target) {
+                    Entry::Vacant(_) => return Err(EvalError::UndefinedIdent(target.to_string())),
+                    Entry::Occupied(mut o) => o.insert(val.clone()),
+                };
+                Ok(val)
+            }
         }
     }
 }

@@ -1,8 +1,8 @@
 use std::fmt::{self, Display, Write};
 
 use crate::{
-    BinaryExpr, BinaryOperator, Block, Decl, Expr, LiteralExpression, MemberAccess, Program, Stmt,
-    UnaryExpr, UnaryOperator,
+    Assignment, BinaryExpr, BinaryOperator, Block, Decl, Expr, LiteralExpression, MemberAccess,
+    Program, Stmt, UnaryExpr, UnaryOperator,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -47,7 +47,7 @@ impl Default for TreeCtx {
 }
 
 impl TreeCtx {
-    fn struct_header(&self, writer: &mut impl Write, name: impl Display) -> fmt::Result {
+    fn with_indentation(&self, writer: &mut impl Write, name: impl Display) -> fmt::Result {
         self.write_identation(writer)?;
         writeln!(writer, "{name}")
     }
@@ -74,7 +74,7 @@ impl TreeCtx {
         name: &str,
         val: &impl TreeDisplay,
     ) -> fmt::Result {
-        self.struct_header(writer, name)?;
+        self.with_indentation(writer, name)?;
         val.fmt_tree(self, writer)?;
         Ok(())
     }
@@ -84,7 +84,7 @@ impl TreeCtx {
         name: &str,
         val: &impl TreeDisplay,
     ) -> fmt::Result {
-        self.struct_header(writer, name)?;
+        self.with_indentation(writer, name)?;
         self.add_level();
         self.make_last();
         val.fmt_tree(self, writer)?;
@@ -166,8 +166,8 @@ impl TreeDisplay for Stmt<'_> {
     fn fmt_tree(&self, ctx: &mut TreeCtx, writer: &mut impl Write) -> fmt::Result {
         use Stmt::*;
         match self {
-            Break => ctx.struct_header(writer, "Break")?,
-            Continue => ctx.struct_header(writer, "Continue")?,
+            Break => ctx.with_indentation(writer, "Break")?,
+            Continue => ctx.with_indentation(writer, "Continue")?,
             Expr(e) => e.fmt_tree(ctx, writer)?,
             Return(e) => ctx.fmt_single_field(writer, "Return", &e.as_ref())?,
             Block(b) => b.fmt_tree(ctx, writer)?,
@@ -175,7 +175,7 @@ impl TreeDisplay for Stmt<'_> {
                 ctx.fmt_single_field(writer, "Print", value)?;
             }
             While { cond, body } => {
-                ctx.struct_header(writer, "While")?;
+                ctx.with_indentation(writer, "While")?;
                 ctx.add_level();
                 ctx.fmt_single_field(writer, "Cond", cond)?;
                 ctx.make_last();
@@ -282,7 +282,7 @@ impl TreeDisplay for BinaryExpr<'_> {
 
 impl TreeDisplay for MemberAccess<'_> {
     fn fmt_tree(&self, ctx: &mut TreeCtx, writer: &mut impl Write) -> fmt::Result {
-        ctx.struct_header(writer, ".")?;
+        ctx.with_indentation(writer, ".")?;
         ctx.add_level();
         self.object.fmt_tree(ctx, writer)?;
         ctx.make_last();
@@ -301,13 +301,13 @@ impl TreeDisplay for Expr<'_> {
             Binary(op) => op.fmt_tree(ctx, writer),
             Unary(op) => op.fmt_tree(ctx, writer),
             Grouped(g) => ctx.fmt_single_field(writer, "Group", &**g),
-            // Ternary(tern) => tern.fmt_tree(ctx, writer),
-            // Call(c) => c.fmt_tree(ctx, writer),
-            // Assignment(a) => a.fmt_tree(ctx, writer),
-            // MemberAccess(a) => a.fmt_tree(ctx, writer),
-            // NamespaceAccess(n) => n.fmt_tree(ctx, writer),
-            // Array(val) => ctx.fmt_single_field_flat(writer, "Array", &&val[..]),
-            // Intrinsic(i) => i.fmt_tree(ctx, writer),
+            Assignment(assignment) => assignment.fmt_tree(ctx, writer), // Ternary(tern) => tern.fmt_tree(ctx, writer),
+                                                                        // Call(c) => c.fmt_tree(ctx, writer),
+                                                                        // Assignment(a) => a.fmt_tree(ctx, writer),
+                                                                        // MemberAccess(a) => a.fmt_tree(ctx, writer),
+                                                                        // NamespaceAccess(n) => n.fmt_tree(ctx, writer),
+                                                                        // Array(val) => ctx.fmt_single_field_flat(writer, "Array", &&val[..]),
+                                                                        // Intrinsic(i) => i.fmt_tree(ctx, writer),
         }
     }
 }
@@ -336,7 +336,7 @@ impl TreeDisplay for LiteralExpression<'_> {
 
 impl TreeDisplay for Block<'_> {
     fn fmt_tree(&self, ctx: &mut TreeCtx, writer: &mut impl Write) -> fmt::Result {
-        ctx.struct_header(writer, "Block")?;
+        ctx.with_indentation(writer, "Block")?;
         self.0.as_slice().fmt_tree(ctx, writer)
     }
 }
@@ -355,7 +355,7 @@ impl TreeDisplay for UnaryOperator {
             // Deref => "*x",
             // Addr => "&x",
         };
-        ctx.struct_header(writer, text)
+        ctx.with_indentation(writer, text)
     }
 }
 
@@ -386,13 +386,25 @@ impl TreeDisplay for BinaryOperator {
             // Shr => ">>",
             // Range => "..",
         };
-        ctx.struct_header(writer, text)
+        ctx.with_indentation(writer, text)
+    }
+}
+
+impl TreeDisplay for Assignment<'_> {
+    fn fmt_tree(&self, ctx: &mut TreeCtx, writer: &mut impl Write) -> fmt::Result {
+        ctx.with_indentation(writer, "Assignment")?;
+        ctx.add_level();
+        ctx.fmt_single_field(writer, "Target", &self.target)?;
+        ctx.make_last();
+        ctx.fmt_single_field(writer, "Value", &self.val)?;
+        ctx.pop_level();
+        Ok(())
     }
 }
 
 impl TreeDisplay for Program<'_> {
     fn fmt_tree(&self, ctx: &mut TreeCtx, writer: &mut impl Write) -> fmt::Result {
-        ctx.struct_header(writer, "Program")?;
+        ctx.with_indentation(writer, "Program")?;
         ctx.add_level();
         ctx.make_last();
         self.declarations.as_slice().fmt_tree(ctx, writer)?;
@@ -407,7 +419,7 @@ impl TreeDisplay for Decl<'_> {
         match self {
             Stmt(s) => s.fmt_tree(ctx, writer),
             VarDecl { name, init } => {
-                ctx.struct_header(writer, "Variable Declaration")?;
+                ctx.with_indentation(writer, "Variable Declaration")?;
                 ctx.fmt_single_field(writer, "Name", name)?;
                 if let Some(init) = init {
                     ctx.fmt_single_field(writer, "Init", init)?;

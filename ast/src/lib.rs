@@ -82,6 +82,7 @@ pub enum Expr<'s> {
     Binary(Box<BinaryExpr<'s>>),
     Unary(Box<UnaryExpr<'s>>),
     Grouped(Box<Expr<'s>>),
+    Assignment(Box<Assignment<'s>>),
 }
 
 #[derive(Debug, Clone)]
@@ -139,6 +140,13 @@ pub enum Stmt<'s> {
     //         default: Option<Box<Stmt<'s>>>,
     //     },
 }
+
+#[derive(Debug, Clone)]
+pub struct Assignment<'s> {
+    pub target: &'s str,
+    pub val: Expr<'s>,
+}
+//
 
 // #[derive(Debug, Clone)]
 // pub enum BinOpKind {
@@ -270,12 +278,6 @@ pub enum Stmt<'s> {
 // pub struct UnaryOp<'s> {
 //     pub val: Expr<'s>,
 //     pub op: UnaryOpKind,
-// }
-//
-// #[derive(Debug, Clone)]
-// pub struct Assignment<'s> {
-//     pub target: Expr<'s>,
-//     pub val: Expr<'s>,
 // }
 //
 // #[derive(Debug, Clone)]

@@ -48,7 +48,6 @@ impl Display for UnaryOperator {
         let operator = match self {
             Neg => '-',
             Not => '!',
-            Pos => '+',
         };
         f.write_char(operator)
     }
@@ -61,6 +60,13 @@ impl Display for UnaryExpr<'_> {
     }
 }
 
+impl Display for Assignment<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self { target, val } = self;
+        write!(f, "(= {target} {val})")
+    }
+}
+
 impl Display for Expr<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -69,6 +75,7 @@ impl Display for Expr<'_> {
             Expr::Grouped(expr) => write!(f, "(group {expr})"),
             Expr::Binary(binary) => binary.fmt(f),
             Expr::Unary(unary) => unary.fmt(f),
+            Expr::Assignment(assignment) => assignment.fmt(f),
         }
     }
 }

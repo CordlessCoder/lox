@@ -1,4 +1,7 @@
-use std::{collections::VecDeque, fmt::{Debug, Display}};
+use std::{
+    collections::VecDeque,
+    fmt::{Debug, Display},
+};
 
 use crate::Parser;
 use diagnostics::{AggregateError, ErrorComponent};
@@ -118,6 +121,16 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
             self.new_parse_error(span, msg);
         }
         tok
+    }
+    pub(crate) fn expect_ident(&mut self, ctx: impl Display) -> Option<&'s str> {
+        let (t, span) = self.peek_next_split();
+        let Some(&Token::Ident(val)) = t else {
+            let msg = format!("Expected an identifier{ctx} found {t:?}");
+            self.new_parse_error(span, msg);
+            return None;
+        };
+        _ = self.advance();
+        Some(val)
     }
 }
 impl<T: Iterator> Debug for Parser<'_, T> {

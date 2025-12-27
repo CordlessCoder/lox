@@ -1,6 +1,6 @@
 use ast::{
-    BinaryExpr, BinaryOperator, Decl, Expr, LiteralExpression, Program, Stmt, UnaryExpr,
-    UnaryOperator,
+    Assignment, BinaryExpr, BinaryOperator, Decl, Expr, LiteralExpression, Program, Stmt,
+    UnaryExpr, UnaryOperator,
 };
 use diagnostics::{AggregateError, ErrorComponent};
 use lexer::{SToken, Token};
@@ -361,7 +361,24 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
         }
     }
     pub fn expression(&mut self) -> Option<Expr<'s>> {
-        self.equality()
+        self.assignment()
+    }
+    fn assignment(&mut self) -> Option<Expr<'s>> {
+        let expr = self.equality()?;
+        if let Some(eq) = self.advance_if(|t| matches!(t, Token::Eq)) {
+            let val = self.assignment()?;
+            match expr {
+                Expr::Ident(target) => {
+                    return Some(Expr::Assignment(Box::new(Assignment { target, val })));
+                }
+                invalid => {
+                    self.new_parse_error(eq.span, format!("Invalid assignment target: {invalid}"));
+                    return None;
+                }
+            }
+        }
+
+        Some(expr)
     }
     fn equality(&mut self) -> Option<Expr<'s>> {
         let mut expr = self.comparison()?;
