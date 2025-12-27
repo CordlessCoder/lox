@@ -1,10 +1,19 @@
 use std::borrow::Cow;
-pub mod tree;
 mod display;
+pub mod tree;
 
 #[derive(Debug, Clone)]
 pub struct Program<'s> {
-    pub statements: Vec<Stmt<'s>>,
+    pub declarations: Vec<Decl<'s>>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Decl<'s> {
+    Stmt(Stmt<'s>),
+    VarDecl {
+        name: &'s str,
+        init: Option<Expr<'s>>,
+    },
 }
 
 #[derive(Debug, Clone)]

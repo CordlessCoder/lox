@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, fmt::Debug};
+use std::{collections::VecDeque, fmt::{Debug, Display}};
 
 use crate::Parser;
 use diagnostics::{AggregateError, ErrorComponent};
@@ -110,11 +110,11 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
         self.advance_if(predicate).is_some()
     }
     /// Advance if the token matches, log an error otherwise.
-    pub(crate) fn expect(&mut self, expected: &Token<'s>) -> Option<SToken<'s>> {
+    pub(crate) fn expect(&mut self, expected: &Token<'s>, ctx: impl Display) -> Option<SToken<'s>> {
         let tok = self.advance_if(|t| t == expected);
         if tok.is_none() {
             let (found, span) = self.peek_next_split();
-            let msg = format!("Expected {expected}, found {found:?}");
+            let msg = format!("Expected {expected}{ctx}, found {found:?}");
             self.new_parse_error(span, msg);
         }
         tok

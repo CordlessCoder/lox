@@ -1,7 +1,7 @@
 use std::fmt::{self, Display, Write};
 
 use crate::{
-    BinaryExpr, BinaryOperator, Block, Expr, LiteralExpression, MemberAccess, Program, Stmt,
+    BinaryExpr, BinaryOperator, Block, Decl, Expr, LiteralExpression, MemberAccess, Program, Stmt,
     UnaryExpr, UnaryOperator,
 };
 
@@ -347,7 +347,6 @@ impl TreeDisplay for UnaryOperator {
         let text = match self {
             Not => "!",
             Neg => "-",
-            Pos => "+",
             // BitNot => "~",
             // PreInc => "++x",
             // PreDec => "--x",
@@ -388,6 +387,34 @@ impl TreeDisplay for BinaryOperator {
             // Range => "..",
         };
         ctx.struct_header(writer, text)
+    }
+}
+
+impl TreeDisplay for Program<'_> {
+    fn fmt_tree(&self, ctx: &mut TreeCtx, writer: &mut impl Write) -> fmt::Result {
+        ctx.struct_header(writer, "Program")?;
+        ctx.add_level();
+        ctx.make_last();
+        self.declarations.as_slice().fmt_tree(ctx, writer)?;
+        ctx.pop_level();
+        Ok(())
+    }
+}
+
+impl TreeDisplay for Decl<'_> {
+    fn fmt_tree(&self, ctx: &mut TreeCtx, writer: &mut impl Write) -> fmt::Result {
+        use Decl::*;
+        match self {
+            Stmt(s) => s.fmt_tree(ctx, writer),
+            VarDecl { name, init } => {
+                ctx.struct_header(writer, "Variable Declaration")?;
+                ctx.fmt_single_field(writer, "Name", name)?;
+                if let Some(init) = init {
+                    ctx.fmt_single_field(writer, "Init", init)?;
+                }
+                Ok(())
+            }
+        }
     }
 }
 // impl TreeDisplay for Ternary<'_> {
@@ -494,16 +521,6 @@ impl TreeDisplay for BinaryOperator {
 //     }
 // }
 
-impl TreeDisplay for Program<'_> {
-    fn fmt_tree(&self, ctx: &mut TreeCtx, writer: &mut impl Write) -> fmt::Result {
-        ctx.struct_header(writer, "Program")?;
-        ctx.add_level();
-        ctx.make_last();
-        self.statements.as_slice().fmt_tree(ctx, writer)?;
-        ctx.pop_level();
-        Ok(())
-    }
-}
 //
 // impl TreeDisplay for NamespaceAccess<'_> {
 //     fn fmt_tree(&self, ctx: &mut TreeCtx, writer: &mut impl Write) -> fmt::Result {

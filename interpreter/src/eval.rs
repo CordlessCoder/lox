@@ -1,10 +1,14 @@
 use crate::LoxVm;
-use ast::{BinaryExpr, BinaryOperator, Expr, LiteralExpression, Stmt, UnaryExpr, UnaryOperator};
+use ast::{
+    BinaryExpr, BinaryOperator, Decl, Expr, LiteralExpression, Stmt, UnaryExpr, UnaryOperator,
+};
 use thiserror::Error;
 use vm_types::Value;
 
 #[derive(Debug, Clone, Error)]
 pub enum EvalError {
+    #[error("Identifier {0} is not defined")]
+    UndefinedIdent(String),
     #[error("Invalid unary operation {op:?} on {val:?}")]
     InvalidUnary { val: Value, op: UnaryOperator },
     #[error("Invalid binary operation {lhs:?} {op} {rhs:?}")]
@@ -27,12 +31,26 @@ pub enum EvalError {
     BinaryWithNilRhs(BinaryOperator, Value),
 }
 
-pub trait Eval {
-    fn eval(self, lox: &mut LoxVm) -> Result<Value, EvalError>;
+pub trait Eval<'s> {
+    fn eval(self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError>;
 }
 
-impl Eval for Stmt<'_> {
-    fn eval(self, lox: &mut LoxVm) -> Result<Value, EvalError> {
+impl<'s> Eval<'s> for Decl<'s> {
+    fn eval(self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError> {
+        use Decl::*;
+        match self {
+            Stmt(s) => s.eval(lox),
+            VarDecl { name, init } => {
+                let init = init.map(|v| v.eval(lox)).transpose()?.unwrap_or(Value::Nil);
+                lox.global_variables.insert(name, init);
+                Ok(Value::Nil)
+            }
+        }
+    }
+}
+
+impl<'s> Eval<'s> for Stmt<'s> {
+    fn eval(self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError> {
         use Stmt::*;
         match self {
             Expr(v) => {
@@ -51,11 +69,16 @@ impl Eval for Stmt<'_> {
     }
 }
 
-impl Eval for Expr<'_> {
-    fn eval(self, lox: &mut LoxVm) -> Result<Value, EvalError> {
+impl<'s> Eval<'s> for Expr<'s> {
+    fn eval(self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError> {
         use Expr::*;
         match self {
-            Ident(i) => unimplemented!(),
+            Ident(name) => {
+                let Some(val) = lox.global_variables.get(name) else {
+                    return Err(EvalError::UndefinedIdent(name.to_string()));
+                };
+                Ok(val.clone())
+            }
             Lit(lit) => lit.eval(lox),
             Unary(unary) => unary.eval(lox),
             Grouped(group) => group.eval(lox),
@@ -64,8 +87,8 @@ impl Eval for Expr<'_> {
     }
 }
 
-impl Eval for BinaryExpr<'_> {
-    fn eval(self, lox: &mut LoxVm) -> Result<Value, EvalError> {
+impl<'s> Eval<'s> for BinaryExpr<'s> {
+    fn eval(self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError> {
         fn try_int_float_casts<R>(
             lhs: Value,
             op: BinaryOperator,
@@ -208,8 +231,8 @@ impl Eval for BinaryExpr<'_> {
     }
 }
 
-impl Eval for UnaryExpr<'_> {
-    fn eval(self, lox: &mut LoxVm) -> Result<Value, EvalError> {
+impl<'s> Eval<'s> for UnaryExpr<'s> {
+    fn eval(self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError> {
         let UnaryExpr { op, val } = self;
         use Value::*;
         let val = val.eval(lox)?;
@@ -237,8 +260,8 @@ impl Eval for UnaryExpr<'_> {
     }
 }
 
-impl Eval for LiteralExpression<'_> {
-    fn eval(self, _: &mut LoxVm) -> Result<Value, EvalError> {
+impl<'s> Eval<'s> for LiteralExpression<'s> {
+    fn eval(self, _: &mut LoxVm<'s>) -> Result<Value, EvalError> {
         use LiteralExpression::*;
         Ok(match self {
             Nil => Value::Nil,

@@ -1,5 +1,6 @@
 use ast::{
-    BinaryOperator, BinaryExpr, Expr, LiteralExpression, Program, Stmt, UnaryExpr, UnaryOperator,
+    BinaryExpr, BinaryOperator, Decl, Expr, LiteralExpression, Program, Stmt, UnaryExpr,
+    UnaryOperator,
 };
 use diagnostics::{AggregateError, ErrorComponent};
 use lexer::{SToken, Token};
@@ -478,12 +479,13 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
             StringLit(s) => Expr::Lit(LiteralExpression::Str(s)),
             BoolLit(b) => Expr::Lit(LiteralExpression::Bool(b)),
             Nil => Expr::Lit(LiteralExpression::Nil),
+            Ident(name) => Expr::Ident(name),
             LParen => {
                 let Some(expr) = self.expression() else {
                     self.new_parse_error(span, "Unterminated (");
                     return None;
                 };
-                self.expect(&Token::RParen)?;
+                self.expect(&Token::RParen, "")?;
                 Expr::Grouped(Box::new(expr))
             }
             unexpected => {
@@ -494,13 +496,12 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
     }
     pub(crate) fn parse_stmt(&mut self) -> Option<Stmt<'s>> {
         if self.consume_if(|t| matches!(t, Token::Print)) {
-            // Printing
             let value = self.expression()?;
-            self.expect(&Token::Semicolon);
+            self.expect(&Token::Semicolon, "");
             return Some(Stmt::Print { value });
         }
         let value = self.expression()?;
-        self.expect(&Token::Semicolon);
+        self.expect(&Token::Semicolon, "");
         Some(Stmt::Expr(value))
         //     use Token::*;
         // let tok = self.peek_next()?;
@@ -558,14 +559,28 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
         //         }
         //     }
     }
+    pub(crate) fn parse_decl(&mut self) -> Option<Decl<'s>> {
+        if self.consume_if(|t| matches!(t, Token::Var)) {
+            let name = self.expect_ident(" in variable declaration")?;
+
+            let mut init = None;
+            if self.consume_if(|t| matches!(t, Token::Eq)) {
+                init = Some(self.expression()?);
+            }
+            self.expect(&Token::Semicolon, " after variable declaration");
+            return Some(Decl::VarDecl { name, init });
+        }
+        let stmt = self.parse_stmt()?;
+        Some(Decl::Stmt(stmt))
+    }
     pub fn parse(&mut self) -> (Program<'s>, AggregateError) {
         //     let name = self.parse_module_header().unwrap_or("UNSPECIFIED");
-        let mut statements = Vec::new();
+        let mut declarations = Vec::new();
         while self.peek_next().is_some() {
-            let Some(stmt) = self.parse_stmt() else {
+            let Some(stmt) = self.parse_decl() else {
                 continue;
             };
-            statements.push(stmt);
+            declarations.push(stmt);
         }
         let components: Vec<ErrorComponent> = self
             .lexer_errors
@@ -573,6 +588,6 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
             .drain(..)
             .chain(self.errors.components.drain(..))
             .collect();
-        (Program { statements }, AggregateError { components })
+        (Program { declarations }, AggregateError { components })
     }
 }
