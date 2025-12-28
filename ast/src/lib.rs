@@ -92,7 +92,7 @@ pub struct MemberAccess<'s> {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct Block<'s>(pub Vec<Stmt<'s>>);
+pub struct Block<'s>(pub Vec<Decl<'s>>);
 
 #[derive(Debug, Clone)]
 pub enum Stmt<'s> {

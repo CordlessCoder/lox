@@ -1,14 +1,13 @@
+mod environment;
 mod eval;
-use std::collections::HashMap;
 
 use ast::Program;
-use vm_types::Value;
+use environment::Environment;
+use eval::{Eval, EvalError};
 
-use crate::eval::{Eval, EvalError};
-
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct LoxVm<'s> {
-    global_variables: HashMap<&'s str, Value>,
+    env: Environment<'s>,
 }
 
 impl<'s> LoxVm<'s> {

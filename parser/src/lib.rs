@@ -167,18 +167,6 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
     //     }
     // }
     // pub(crate) fn parse_block(&mut self) -> Option<Block<'s>> {
-    //     self.expect(&Token::LBrace)?;
-    //     let mut block = Vec::new();
-    //     while self
-    //         .peek_next_split()
-    //         .0
-    //         .is_some_and(|t| !matches!(t, Token::RBrace))
-    //     {
-    //         let stmt = self.parse_stmt()?;
-    //         block.push(stmt);
-    //     }
-    //     self.expect(&Token::RBrace)?;
-    //     Some(ast::Block(block))
     // }
     // pub(crate) fn parse_if(&mut self) -> Option<Stmt<'s>> {
     //     self.expect(&Token::If)?;
@@ -517,6 +505,19 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
             let value = self.expression()?;
             self.expect(&Token::Semicolon, "");
             return Some(Stmt::Print { value });
+        }
+        if self.consume_if(|t| matches!(t, Token::LBrace)) {
+            let mut block = Vec::new();
+            while self
+                .peek_next_split()
+                .0
+                .is_some_and(|t| !matches!(t, Token::RBrace))
+            {
+                let stmt = self.parse_decl()?;
+                block.push(stmt);
+            }
+            self.expect(&Token::RBrace, " to terminate a block")?;
+            return Some(Stmt::Block(ast::Block(block)));
         }
         let value = self.expression()?;
         self.expect(&Token::Semicolon, "");

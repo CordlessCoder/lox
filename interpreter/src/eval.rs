@@ -1,8 +1,7 @@
-use std::collections::hash_map::Entry;
-
 use crate::LoxVm;
 use ast::{
-    BinaryExpr, BinaryOperator, Decl, Expr, LiteralExpression, Stmt, UnaryExpr, UnaryOperator,
+    BinaryExpr, BinaryOperator, Block, Decl, Expr, LiteralExpression, Stmt, UnaryExpr,
+    UnaryOperator,
 };
 use thiserror::Error;
 use vm_types::Value;
@@ -44,7 +43,7 @@ impl<'s> Eval<'s> for Decl<'s> {
             Stmt(s) => s.eval(lox),
             VarDecl { name, init } => {
                 let init = init.map(|v| v.eval(lox)).transpose()?.unwrap_or(Value::Nil);
-                lox.global_variables.insert(name, init);
+                lox.env.define(name, init);
                 Ok(Value::Nil)
             }
         }
@@ -64,6 +63,7 @@ impl<'s> Eval<'s> for Stmt<'s> {
                 println!("{val}");
                 Ok(Value::Nil)
             }
+            Block(block) => block.eval(lox),
             other => {
                 unimplemented!("evaluation of {other:?} is not yet supported")
             }
@@ -76,7 +76,7 @@ impl<'s> Eval<'s> for Expr<'s> {
         use Expr::*;
         match self {
             Ident(name) => {
-                let Some(val) = lox.global_variables.get(name) else {
+                let Some(val) = lox.env.get(name) else {
                     return Err(EvalError::UndefinedIdent(name.to_string()));
                 };
                 Ok(val.clone())
@@ -88,13 +88,25 @@ impl<'s> Eval<'s> for Expr<'s> {
             Assignment(assignment) => {
                 let ast::Assignment { target, val } = *assignment;
                 let val = val.eval(lox)?;
-                match lox.global_variables.entry(target) {
-                    Entry::Vacant(_) => return Err(EvalError::UndefinedIdent(target.to_string())),
-                    Entry::Occupied(mut o) => o.insert(val.clone()),
-                };
+                lox.env.assign(target, val.clone())?;
                 Ok(val)
             }
         }
+    }
+}
+
+impl<'s> Eval<'s> for Block<'s> {
+    fn eval(self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError> {
+        lox.env.push_scope();
+        let mut error = None;
+        for stmt in self.0 {
+            if let Err(err) = stmt.eval(lox) {
+                error = Some(err);
+                break;
+            };
+        }
+        lox.env.pop_scope();
+        error.map_or_else(|| Ok(Value::Nil), Err)
     }
 }
 
