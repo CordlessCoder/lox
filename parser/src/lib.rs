@@ -1,3 +1,4 @@
+#![expect(unused)]
 use ast::{
     Assignment, BinaryExpr, BinaryOperator, Decl, Expr, LiteralExpression, Program, Stmt,
     UnaryExpr, UnaryOperator,

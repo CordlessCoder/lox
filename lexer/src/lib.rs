@@ -11,7 +11,7 @@ mod int;
 pub type SToken<'s> = Spanned<Token<'s>>;
 
 #[derive(Debug, Clone, Logos, PartialEq)]
-#[logos(skip "[ \r\n\t]*")]
+#[logos(skip "[ \r\n\t]+")]
 #[logos(skip "//[^\n]*")]
 pub enum Token<'s> {
     // keywords
@@ -74,7 +74,7 @@ pub enum Token<'s> {
         let text = lex.slice();
         text[1..].chars().next().unwrap()
     })]
-    #[regex(r"'\\[^']'", (|lex: &mut Lexer<'_>| -> Option<char> {
+    #[regex(r"'\\[^']'", (|lex: &mut Lexer<'s, Token<'s>>| -> Option<char> {
         let text = lex.slice();
         let text = &text[2..text.len() - 1];
         let mut chars = text.chars();
@@ -83,9 +83,9 @@ pub enum Token<'s> {
     }))]
     CharLiteral(char),
     #[regex(r"0x[0-9a-fA-F][0-9a-fA-F_]*", |lex| parse_int(16, &lex.slice()[2..]))]
-    #[regex(r"0o[0-7_]+", |lex| parse_int(8, &lex.slice()[2..]))]
-    #[regex(r"0b[0-1_]+", |lex| parse_int(2, &lex.slice()[2..]))]
-    #[regex(r"[0-9][0-9_]*", |lex| parse_int(10, lex.slice()))]
+    #[regex(r"0o[0-9a-fA-F][0-9a-fA-F_]*", |lex| parse_int(8, &lex.slice()[2..]))]
+    #[regex(r"0p[0-9a-fA-F][0-9a-fA-F_]*", |lex| parse_int(2, &lex.slice()[2..]))]
+    #[regex(r"[0-9][0-9a-fA-F_]*", |lex| parse_int(10, lex.slice()))]
     IntLit(i64),
     #[regex(r"\.\d+", |lex| lex.slice().parse().ok())]
     #[regex(r"\d+\.\d+", |lex| lex.slice().parse().ok())]
@@ -173,9 +173,9 @@ mod tests {
             &tokens,
             [
                 // Your first Lox program!
-                // print "Hello, world!";
+                // print "\"Hello, world\"!";
                 Print,
-                string("Hello, world!"),
+                string("\"Hello, world\"!"),
                 Semicolon
             ]
             .as_slice()

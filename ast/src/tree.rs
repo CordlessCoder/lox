@@ -336,8 +336,7 @@ impl TreeDisplay for LiteralExpression<'_> {
 
 impl TreeDisplay for Block<'_> {
     fn fmt_tree(&self, ctx: &mut TreeCtx, writer: &mut impl Write) -> fmt::Result {
-        ctx.with_indentation(writer, "Block")?;
-        self.0.as_slice().fmt_tree(ctx, writer)
+        ctx.fmt_single_field_flat(writer, "Block", &self.0.as_slice())
     }
 }
 
@@ -404,12 +403,7 @@ impl TreeDisplay for Assignment<'_> {
 
 impl TreeDisplay for Program<'_> {
     fn fmt_tree(&self, ctx: &mut TreeCtx, writer: &mut impl Write) -> fmt::Result {
-        ctx.with_indentation(writer, "Program")?;
-        ctx.add_level();
-        ctx.make_last();
-        self.declarations.as_slice().fmt_tree(ctx, writer)?;
-        ctx.pop_level();
-        Ok(())
+        ctx.fmt_single_field_flat(writer, "Progra", &self.declarations.as_slice())
     }
 }
 
@@ -420,10 +414,16 @@ impl TreeDisplay for Decl<'_> {
             Stmt(s) => s.fmt_tree(ctx, writer),
             VarDecl { name, init } => {
                 ctx.with_indentation(writer, "Variable Declaration")?;
+                ctx.add_level();
+                if init.is_none() {
+                    ctx.make_last();
+                }
                 ctx.fmt_single_field(writer, "Name", name)?;
                 if let Some(init) = init {
+                    ctx.make_last();
                     ctx.fmt_single_field(writer, "Init", init)?;
                 }
+                ctx.pop_level();
                 Ok(())
             }
         }
