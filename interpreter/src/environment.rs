@@ -5,63 +5,52 @@ use vm_types::Value;
 use crate::eval::EvalError;
 
 type Scope<'s> = HashMap<&'s str, Value>;
+#[derive(Debug, Clone)]
+struct Definition<'s> {
+    name: &'s str,
+    old_value: Option<Value>,
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct Environment<'s> {
-    global_variables: Scope<'s>,
-    scopes: Vec<Scope<'s>>,
+    // PERF: Keep only one for the current state of the scope for O(1) indexing.
+    scope: Scope<'s>,
+    /// Tracks definitions/shadows created by local scopes, to be reversed
+    layers: Vec<Vec<Definition<'s>>>,
 }
 
 impl<'s> Environment<'s> {
-    fn top_scope(&mut self) -> &mut Scope<'s> {
-        if let Some(last) = self.scopes.last_mut() {
-            return last;
-        }
-        &mut self.global_variables
-    }
-    fn all_scopes(&self) -> impl Iterator<Item = &Scope<'s>> {
-        self.scopes
-            .iter()
-            .rev()
-            .chain(core::iter::once(&self.global_variables))
-    }
-    fn all_scopes_mut(&mut self) -> impl Iterator<Item = &mut Scope<'s>> {
-        let Self {
-            global_variables,
-            scopes,
-        } = self;
-        scopes
-            .iter_mut()
-            .rev()
-            .chain(core::iter::once(global_variables))
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
     }
     pub fn define(&mut self, name: &'s str, value: Value) {
-        self.top_scope().insert(name, value);
+        let old_value = self.scope.insert(name, value);
+        if let Some(level) = self.layers.last_mut() {
+            level.push(Definition { name, old_value })
+        }
     }
     pub fn assign(&mut self, name: &'s str, value: Value) -> Result<(), EvalError> {
         use std::collections::hash_map::Entry;
-        let Some(mut var) = self
-            .all_scopes_mut()
-            .flat_map(|scope| match scope.entry(name) {
-                Entry::Vacant(_) => None,
-                Entry::Occupied(o) => Some(o),
-            })
-            .next()
-        else {
-            return Err(EvalError::UndefinedIdent(name.to_string()));
+        match self.scope.entry(name) {
+            Entry::Vacant(_) => return Err(EvalError::UndefinedIdent(name.to_string())),
+            Entry::Occupied(mut o) => o.insert(value),
         };
-        var.insert(value);
         Ok(())
     }
     pub fn get(&mut self, name: &str) -> Option<&Value> {
-        self.all_scopes().flat_map(|s| s.get(name)).next()
+        self.scope.get(name)
     }
     pub fn push_scope(&mut self) {
-        self.scopes.push(Scope::default());
+        self.layers.push(Vec::new());
     }
     pub fn pop_scope(&mut self) {
-        self.scopes
+        let shadows = self
+            .layers
             .pop()
-            .expect("Attempted to pop a scope without pushing one.");
+            .expect("Can't pop a scope without pushing one first.");
+        for Definition { name, old_value } in shadows {
+            self.scope.insert(name, old_value.unwrap_or(Value::Nil));
+        }
     }
 }
