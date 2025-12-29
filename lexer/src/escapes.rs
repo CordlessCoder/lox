@@ -4,7 +4,7 @@ use std::borrow::Cow;
 
 use crate::Token;
 
-pub fn unescape(c: char) -> Option<char> {
+pub const fn unescape(c: char) -> Option<char> {
     Some(match c {
         'n' => '\n',
         'r' => '\r',

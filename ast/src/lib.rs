@@ -81,7 +81,7 @@ pub enum Expr<'s> {
     Ident(&'s str),
     Binary(Box<BinaryExpr<'s>>),
     Unary(Box<UnaryExpr<'s>>),
-    Grouped(Box<Expr<'s>>),
+    Grouped(Box<Self>),
     Assignment(Box<Assignment<'s>>),
 }
 

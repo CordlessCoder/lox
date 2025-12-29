@@ -12,7 +12,7 @@ use utils::Spanned;
 
 impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s, Tokens> {
     #[must_use]
-    pub fn new(source: SourceFile, tokens: Tokens) -> Self {
+    pub const fn new(source: SourceFile, tokens: Tokens) -> Self {
         Self {
             tokens,
             peeked: VecDeque::new(),
@@ -87,6 +87,36 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
     fn check(&mut self, predicate: impl FnOnce(&Token) -> bool) -> bool {
         self.peek_next().is_some_and(|t| predicate(&t.inner))
     }
+    pub(crate) fn try_map<T>(
+        &mut self,
+        predicate: impl FnOnce(Token) -> Result<T, Token>,
+    ) -> Option<(T, Span)> {
+        let token = self.advance()?;
+        let span = token.span;
+        match predicate(token.inner) {
+            Ok(val) => Some((val, span)),
+            Err(tok) => {
+                self.put_back(Spanned::new(tok, span));
+                None
+            }
+        }
+    }
+    pub(crate) fn advance_if_eq(&mut self, tok: &Token<'_>) -> Option<SToken<'s>> {
+        let advance = self.check(|next| next == tok);
+        if advance {
+            return self.advance();
+        }
+        None
+    }
+    #[inline(always)]
+    pub(crate) fn consume_if_eq(&mut self, tok: &Token<'_>) -> bool {
+        let advance = self.check(|next| next == tok);
+        if advance {
+            self.advance();
+        }
+        advance
+    }
+    #[inline]
     pub(crate) fn advance_if(
         &mut self,
         predicate: impl FnOnce(&Token) -> bool,

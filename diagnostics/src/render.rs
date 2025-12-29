@@ -13,7 +13,7 @@ pub struct RenderContext {
 
 impl Default for RenderContext {
     fn default() -> Self {
-        RenderContext {
+        Self {
             width: 80,
             use_color: false,
             lines_of_context: 1,
@@ -73,7 +73,7 @@ pub struct RenderOnPrint<E: RenderableError> {
 }
 
 impl<E: RenderableError> RenderOnPrint<E> {
-    pub fn new(err: E, ctx: RenderContext) -> Self {
+    pub const fn new(err: E, ctx: RenderContext) -> Self {
         Self { err, ctx }
     }
 }
@@ -156,8 +156,8 @@ impl RenderableError for ErrorComponent {
                     .saturating_sub(line.span.start)
                     .min(line.text.len());
             if let Some(highlight_message) = highlight_message
-                && let true = overlap.is_empty()
-                && let true = prev_line_had_overlap
+                && overlap.is_empty()
+                && prev_line_had_overlap
             {
                 write!(writer, "{}", highlight_message.red().bold())?;
             }

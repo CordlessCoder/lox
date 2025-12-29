@@ -354,7 +354,7 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
     }
     fn assignment(&mut self) -> Option<Expr<'s>> {
         let expr = self.or()?;
-        if let Some(eq) = self.advance_if(|t| matches!(t, Token::Eq)) {
+        if let Some(eq) = self.advance_if_eq(&Token::Eq) {
             let val = self.assignment()?;
             match expr {
                 Expr::Ident(target) => {
@@ -371,7 +371,7 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
     }
     fn or(&mut self) -> Option<Expr<'s>> {
         let mut lhs = self.and()?;
-        while self.consume_if(|tok| matches!(tok, Token::Or)) {
+        while self.consume_if_eq(&Token::Or) {
             let rhs = self.and()?;
             lhs = Expr::Binary(Box::new(BinaryExpr {
                 lhs,
@@ -383,7 +383,7 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
     }
     fn and(&mut self) -> Option<Expr<'s>> {
         let mut lhs = self.equality()?;
-        while self.consume_if(|tok| matches!(tok, Token::And)) {
+        while self.consume_if_eq(&Token::And) {
             let rhs = self.and()?;
             lhs = Expr::Binary(Box::new(BinaryExpr {
                 lhs,
@@ -395,16 +395,17 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
     }
     fn equality(&mut self) -> Option<Expr<'s>> {
         let mut expr = self.comparison()?;
-        while let Some(operator) = self.advance_if(|t| matches!(t, Token::EqEq | Token::Ne)) {
-            let op = match operator.inner {
+        while let Some((op, op_span)) = self.try_map(|tok| {
+            Ok(match tok {
                 Token::EqEq => BinaryOperator::Eq,
                 Token::Ne => BinaryOperator::Ne,
-                _ => unreachable!(),
-            };
+                _ => return Err(tok),
+            })
+        }) {
             let Some(rhs) = self.comparison() else {
                 self.new_parse_error(
-                    operator.span.clone(),
-                    format!("Missing right-hand-side of binary operator {operator:?}"),
+                    op_span,
+                    format!("Missing right-hand-side of binary operator {op:?}"),
                 );
                 return None;
             };
@@ -414,20 +415,19 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
     }
     fn comparison(&mut self) -> Option<Expr<'s>> {
         let mut expr = self.term()?;
-        while let Some(operator) =
-            self.advance_if(|t| matches!(t, Token::Gt | Token::Ge | Token::Lt | Token::Le))
-        {
-            let op = match operator.inner {
+        while let Some((op, op_span)) = self.try_map(|tok| {
+            Ok(match tok {
                 Token::Gt => BinaryOperator::Gt,
                 Token::Ge => BinaryOperator::Ge,
                 Token::Lt => BinaryOperator::Lt,
                 Token::Le => BinaryOperator::Le,
-                _ => unreachable!(),
-            };
+                _ => return Err(tok),
+            })
+        }) {
             let Some(rhs) = self.term() else {
                 self.new_parse_error(
-                    operator.span.clone(),
-                    format!("Missing right-hand-side of binary operator {operator:?}"),
+                    op_span,
+                    format!("Missing right-hand-side of binary operator {op:?}"),
                 );
                 return None;
             };
@@ -437,16 +437,17 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
     }
     fn term(&mut self) -> Option<Expr<'s>> {
         let mut expr = self.factor()?;
-        while let Some(operator) = self.advance_if(|t| matches!(t, Token::Minus | Token::Plus)) {
-            let op = match operator.inner {
+        while let Some((op, op_span)) = self.try_map(|tok| {
+            Ok(match tok {
                 Token::Minus => BinaryOperator::Sub,
                 Token::Plus => BinaryOperator::Add,
-                _ => unreachable!(),
-            };
+                _ => return Err(tok),
+            })
+        }) {
             let Some(right) = self.factor() else {
                 self.new_parse_error(
-                    operator.span.clone(),
-                    format!("Missing right-hand-side of binary operator {operator:?}"),
+                    op_span,
+                    format!("Missing right-hand-side of binary operator {op:?}"),
                 );
                 return None;
             };
@@ -460,16 +461,17 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
     }
     fn factor(&mut self) -> Option<Expr<'s>> {
         let mut expr = self.unary()?;
-        while let Some(operator) = self.advance_if(|t| matches!(t, Token::Slash | Token::Star)) {
-            let op = match operator.inner {
+        while let Some((op, op_span)) = self.try_map(|tok| {
+            Ok(match tok {
                 Token::Slash => BinaryOperator::Div,
                 Token::Star => BinaryOperator::Mul,
-                _ => unreachable!(),
-            };
+                _ => return Err(tok),
+            })
+        }) {
             let Some(right) = self.unary() else {
                 self.new_parse_error(
-                    operator.span.clone(),
-                    format!("Missing right-hand-side of binary operator {operator:?}"),
+                    op_span,
+                    format!("Missing right-hand-side of binary operator {op:?}"),
                 );
                 return None;
             };
@@ -542,7 +544,7 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
         self.expect(&Token::LBrace, " after if statement condition")?;
         let then_body = self.parse_block()?;
         let mut else_body = None;
-        if self.consume_if(|tok| matches!(tok, Token::Else)) {
+        if self.consume_if_eq(&Token::Else) {
             self.expect(&Token::LBrace, " after else")?;
             else_body = Some(self.parse_block()?);
         }
@@ -560,23 +562,23 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
     }
     pub(crate) fn parse_for(&mut self) -> Option<Stmt<'s>> {
         self.expect(&Token::LParen, " after for")?;
-        let initializer = if self.consume_if(|tok| matches!(tok, Token::Semicolon)) {
+        let initializer = if self.consume_if_eq(&Token::Semicolon) {
             None
-        } else if self.consume_if(|tok| matches!(tok, Token::Var)) {
+        } else if self.consume_if_eq(&Token::Var) {
             Some(self.parse_var_decl()?)
         } else {
             let expr = self.expression()?;
             self.expect(&Token::Semicolon, " after for loop initializer")?;
             Some(Decl::Stmt(Stmt::Expr(expr)))
         };
-        let cond = if self.consume_if(|tok| matches!(tok, Token::Semicolon)) {
+        let cond = if self.consume_if_eq(&Token::Semicolon) {
             None
         } else {
             let expr = self.expression()?;
             self.expect(&Token::Semicolon, " after for loop initializer")?;
             Some(expr)
         };
-        let increment = if self.consume_if(|tok| matches!(tok, Token::RParen)) {
+        let increment = if self.consume_if_eq(&Token::RParen) {
             None
         } else {
             let expr = self.expression()?;
@@ -593,21 +595,21 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
         })))
     }
     pub(crate) fn parse_stmt(&mut self) -> Option<Stmt<'s>> {
-        if self.consume_if(|t| matches!(t, Token::Print)) {
+        if self.consume_if_eq(&Token::Print) {
             let value = self.expression()?;
             self.expect(&Token::Semicolon, "");
             return Some(Stmt::Print { value });
         }
-        if self.consume_if(|t| matches!(t, Token::LBrace)) {
+        if self.consume_if_eq(&Token::LBrace) {
             return Some(Stmt::Block(self.parse_block()?));
         }
-        if self.consume_if(|t| matches!(t, Token::If)) {
+        if self.consume_if_eq(&Token::If) {
             return self.parse_if();
         }
-        if self.consume_if(|t| matches!(t, Token::While)) {
+        if self.consume_if_eq(&Token::While) {
             return self.parse_while();
         }
-        if self.consume_if(|t| matches!(t, Token::For)) {
+        if self.consume_if_eq(&Token::For) {
             return self.parse_for();
         }
         let value = self.expression()?;
@@ -673,14 +675,14 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
         let name = self.expect_ident(" in variable declaration")?;
 
         let mut init = None;
-        if self.consume_if(|t| matches!(t, Token::Eq)) {
+        if self.consume_if_eq(&Token::Eq) {
             init = Some(self.expression()?);
         }
         self.expect(&Token::Semicolon, " after variable declaration");
         Some(Decl::VarDecl { name, init })
     }
     pub(crate) fn parse_decl(&mut self) -> Option<Decl<'s>> {
-        if self.consume_if(|t| matches!(t, Token::Var)) {
+        if self.consume_if_eq(&Token::Var) {
             return self.parse_var_decl();
         }
         let stmt = self.parse_stmt()?;

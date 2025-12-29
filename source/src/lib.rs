@@ -79,19 +79,19 @@ pub struct HumanFilePos {
 
 impl HumanFilePos {
     #[must_use]
-    pub fn line(&self) -> usize {
+    pub const fn line(&self) -> usize {
         self.line.get() as usize
     }
     #[must_use]
-    pub fn line_0idx(&self) -> usize {
+    pub const fn line_0idx(&self) -> usize {
         self.line.get() as usize - 1
     }
     #[must_use]
-    pub fn col(&self) -> usize {
+    pub const fn col(&self) -> usize {
         self.column_utf8.get() as usize
     }
     #[must_use]
-    pub fn col_bytes(&self) -> usize {
+    pub const fn col_bytes(&self) -> usize {
         self.column_bytes as usize
     }
 }
@@ -105,8 +105,8 @@ struct SourceStorage {
 
 impl SourceStorage {
     #[must_use]
-    pub fn new(path: String, text: String) -> Self {
-        SourceStorage {
+    pub const fn new(path: String, text: String) -> Self {
+        Self {
             text,
             path,
             line_starts: OnceCell::new(),

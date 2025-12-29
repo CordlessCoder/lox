@@ -38,7 +38,7 @@ impl<'s> Environment<'s> {
         };
         Ok(())
     }
-    pub fn get(&mut self, name: &str) -> Option<&Value> {
+    pub fn get(&self, name: &str) -> Option<&Value> {
         self.scope.get(name)
     }
     pub fn push_scope(&mut self) {

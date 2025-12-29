@@ -23,18 +23,20 @@ pub mod render;
 // Errors during execution likely need extra information to describe the runtime context
 
 use source::{SourceFile, Span};
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct AggregateError {
     pub components: Vec<ErrorComponent>,
 }
 
 impl AggregateError {
     #[must_use]
-    pub fn new() -> Self {
-        Self::default()
+    pub const fn new() -> Self {
+        Self {
+            components: Vec::new(),
+        }
     }
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.components.is_empty()
     }
     #[must_use]
@@ -44,6 +46,12 @@ impl AggregateError {
     pub fn add_error(&mut self, component: ErrorComponent) -> &mut ErrorComponent {
         self.components.push(component);
         self.components.last_mut().unwrap()
+    }
+}
+
+impl Default for AggregateError {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -65,8 +73,8 @@ pub struct ErrorComponent {
 
 impl ErrorComponent {
     #[must_use]
-    pub fn new(source: SourceFile, short_message: String, span: Span) -> Self {
-        ErrorComponent {
+    pub const fn new(source: SourceFile, short_message: String, span: Span) -> Self {
+        Self {
             short_message,
             level: ErrorLevel::Error,
             long_message: String::new(),
@@ -79,7 +87,7 @@ impl ErrorComponent {
         self.highlight_message = Some(message);
         self
     }
-    pub fn set_level(&mut self, level: ErrorLevel) -> &mut Self {
+    pub const fn set_level(&mut self, level: ErrorLevel) -> &mut Self {
         self.level = level;
         self
     }

@@ -2,7 +2,7 @@ use super::Value;
 
 impl Value {
     #[must_use]
-    pub fn as_bool(&self) -> Option<bool> {
+    pub const fn as_bool(&self) -> Option<bool> {
         use Value::*;
         Some(match self {
             &Bool(b) => b,
@@ -23,7 +23,7 @@ impl Value {
         })
     }
     #[must_use]
-    pub fn as_float(&self) -> Option<f64> {
+    pub const fn as_float(&self) -> Option<f64> {
         use Value::*;
         Some(match self {
             &Bool(true) => 1.0,
@@ -59,7 +59,7 @@ impl From<String> for Value {
     }
 }
 
-impl<T: Into<Value>> From<Option<T>> for Value {
+impl<T: Into<Self>> From<Option<T>> for Value {
     fn from(value: Option<T>) -> Self {
         value.map_or(Self::Nil, Into::into)
     }

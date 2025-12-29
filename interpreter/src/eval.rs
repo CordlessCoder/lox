@@ -180,88 +180,96 @@ impl<'s> Eval<'s> for BinaryExpr<'s> {
         let lhs = lhs.eval(lox)?;
         let mut rhs = || rhs.eval(lox);
         Ok(match op {
-            BinaryOperator::Add => match (lhs, rhs()?) {
-                (Nil, Nil) => Nil,
-                (Nil, right) => return Err(EvalError::BinaryWithNilLhs(op, right)),
-                (left, Nil) => return Err(EvalError::BinaryWithNilRhs(op, left)),
+            BinaryOperator::Add => {
+                match (lhs, rhs()?) {
+                    (Nil, Nil) => Nil,
+                    (Nil, right) => return Err(EvalError::BinaryWithNilLhs(op, right)),
+                    (left, Nil) => return Err(EvalError::BinaryWithNilRhs(op, left)),
 
-                (Integer(lhs), Integer(rhs)) => {
-                    Integer(lhs.checked_add(rhs).ok_or(EvalError::BinaryOverflow {
-                        lhs: lhs.into(),
-                        op,
-                        rhs: rhs.into(),
-                    })?)
+                    (Integer(lhs), Integer(rhs)) => Integer(lhs.checked_add(rhs).ok_or_else(
+                        || EvalError::BinaryOverflow {
+                            lhs: lhs.into(),
+                            op,
+                            rhs: rhs.into(),
+                        },
+                    )?),
+                    (String(a), String(b)) => String(a + &b),
+                    (Float(a), Float(b)) => Float(a + b),
+                    (Bool(a), Bool(b)) => Integer(i64::from(a) + i64::from(b)),
+
+                    (Float(f), Integer(i)) | (Integer(i), Float(f)) => Float(f + i as f64),
+                    (Integer(i), Bool(b)) | (Bool(b), Integer(i)) => Integer(i + i64::from(b)),
+
+                    (lhs, rhs) => return Err(EvalError::InvalidBinary { lhs, op, rhs }),
                 }
-                (String(a), String(b)) => String(a + &b),
-                (Float(a), Float(b)) => Float(a + b),
-                (Bool(a), Bool(b)) => Integer(i64::from(a) + i64::from(b)),
+            }
+            BinaryOperator::Sub => {
+                match (lhs, rhs()?) {
+                    (Nil, Nil) => Nil,
+                    (Nil, right) => return Err(EvalError::BinaryWithNilLhs(op, right)),
+                    (left, Nil) => return Err(EvalError::BinaryWithNilRhs(op, left)),
 
-                (Float(f), Integer(i)) | (Integer(i), Float(f)) => Float(f + i as f64),
-                (Integer(i), Bool(b)) | (Bool(b), Integer(i)) => Integer(i + i64::from(b)),
+                    (Integer(lhs), Integer(rhs)) => Integer(lhs.checked_sub(rhs).ok_or_else(
+                        || EvalError::BinaryOverflow {
+                            lhs: lhs.into(),
+                            op,
+                            rhs: rhs.into(),
+                        },
+                    )?),
+                    (Float(a), Float(b)) => Float(a - b),
+                    (Bool(a), Bool(b)) => Integer(i64::from(a) - i64::from(b)),
 
-                (lhs, rhs) => return Err(EvalError::InvalidBinary { lhs, op, rhs }),
-            },
-            BinaryOperator::Sub => match (lhs, rhs()?) {
-                (Nil, Nil) => Nil,
-                (Nil, right) => return Err(EvalError::BinaryWithNilLhs(op, right)),
-                (left, Nil) => return Err(EvalError::BinaryWithNilRhs(op, left)),
+                    (Float(lhs), Integer(rhs)) => Float(lhs - rhs as f64),
+                    (Integer(lhs), Float(rhs)) => Float(lhs as f64 - rhs),
 
-                (Integer(lhs), Integer(rhs)) => {
-                    Integer(lhs.checked_sub(rhs).ok_or(EvalError::BinaryOverflow {
-                        lhs: lhs.into(),
-                        op,
-                        rhs: rhs.into(),
-                    })?)
+                    (lhs, rhs) => return Err(EvalError::InvalidBinary { lhs, op, rhs }),
                 }
-                (Float(a), Float(b)) => Float(a - b),
-                (Bool(a), Bool(b)) => Integer(i64::from(a) - i64::from(b)),
+            }
+            BinaryOperator::Mul => {
+                match (lhs, rhs()?) {
+                    (Nil, Nil) => Nil,
+                    (Nil, right) => return Err(EvalError::BinaryWithNilLhs(op, right)),
+                    (left, Nil) => return Err(EvalError::BinaryWithNilRhs(op, left)),
 
-                (Float(lhs), Integer(rhs)) => Float(lhs - rhs as f64),
-                (Integer(lhs), Float(rhs)) => Float(lhs as f64 - rhs),
+                    (Integer(lhs), Integer(rhs)) => Integer(lhs.checked_mul(rhs).ok_or_else(
+                        || EvalError::BinaryOverflow {
+                            lhs: lhs.into(),
+                            op,
+                            rhs: rhs.into(),
+                        },
+                    )?),
 
-                (lhs, rhs) => return Err(EvalError::InvalidBinary { lhs, op, rhs }),
-            },
-            BinaryOperator::Mul => match (lhs, rhs()?) {
-                (Nil, Nil) => Nil,
-                (Nil, right) => return Err(EvalError::BinaryWithNilLhs(op, right)),
-                (left, Nil) => return Err(EvalError::BinaryWithNilRhs(op, left)),
+                    (Float(a), Float(b)) => Float(a * b),
+                    (Bool(a), Bool(b)) => Integer(i64::from(a) * i64::from(b)),
 
-                (Integer(lhs), Integer(rhs)) => {
-                    Integer(lhs.checked_mul(rhs).ok_or(EvalError::BinaryOverflow {
-                        lhs: lhs.into(),
-                        op,
-                        rhs: rhs.into(),
-                    })?)
+                    (Float(lhs), Integer(rhs)) => Float(lhs * rhs as f64),
+                    (Integer(lhs), Float(rhs)) => Float(lhs as f64 * rhs),
+
+                    (lhs, rhs) => return Err(EvalError::InvalidBinary { lhs, op, rhs }),
                 }
+            }
+            BinaryOperator::Div => {
+                match (lhs, rhs()?) {
+                    (Nil, Nil) => Nil,
+                    (Nil, right) => return Err(EvalError::BinaryWithNilLhs(op, right)),
+                    (left, Nil) => return Err(EvalError::BinaryWithNilRhs(op, left)),
 
-                (Float(a), Float(b)) => Float(a * b),
-                (Bool(a), Bool(b)) => Integer(i64::from(a) * i64::from(b)),
+                    (Integer(lhs), Integer(rhs)) => Integer(lhs.checked_div(rhs).ok_or_else(
+                        || EvalError::BinaryOverflow {
+                            lhs: lhs.into(),
+                            op,
+                            rhs: rhs.into(),
+                        },
+                    )?),
 
-                (Float(lhs), Integer(rhs)) => Float(lhs * rhs as f64),
-                (Integer(lhs), Float(rhs)) => Float(lhs as f64 * rhs),
+                    (Float(a), Float(b)) => Float(a / b),
 
-                (lhs, rhs) => return Err(EvalError::InvalidBinary { lhs, op, rhs }),
-            },
-            BinaryOperator::Div => match (lhs, rhs()?) {
-                (Nil, Nil) => Nil,
-                (Nil, right) => return Err(EvalError::BinaryWithNilLhs(op, right)),
-                (left, Nil) => return Err(EvalError::BinaryWithNilRhs(op, left)),
+                    (Float(lhs), Integer(rhs)) => Float(lhs / rhs as f64),
+                    (Integer(lhs), Float(rhs)) => Float(lhs as f64 / rhs),
 
-                (Integer(lhs), Integer(rhs)) => {
-                    Integer(lhs.checked_div(rhs).ok_or(EvalError::BinaryOverflow {
-                        lhs: lhs.into(),
-                        op,
-                        rhs: rhs.into(),
-                    })?)
+                    (lhs, rhs) => return Err(EvalError::InvalidBinary { lhs, op, rhs }),
                 }
-
-                (Float(a), Float(b)) => Float(a / b),
-
-                (Float(lhs), Integer(rhs)) => Float(lhs / rhs as f64),
-                (Integer(lhs), Float(rhs)) => Float(lhs as f64 / rhs),
-
-                (lhs, rhs) => return Err(EvalError::InvalidBinary { lhs, op, rhs }),
-            },
+            }
             BinaryOperator::Lt => Bool(try_int_float_casts(
                 lhs,
                 op,
