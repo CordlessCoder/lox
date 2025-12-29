@@ -1,6 +1,7 @@
 use super::Value;
 
 impl Value {
+    #[must_use]
     pub fn as_bool(&self) -> Option<bool> {
         use Value::*;
         Some(match self {
@@ -8,26 +9,28 @@ impl Value {
             &Integer(n) => n != 0,
             &Float(n) => n != 0.0,
             Nil => false,
-            _ => return None,
+            String(s) => !s.is_empty(),
         })
     }
+    #[must_use]
     pub fn as_int(&self) -> Option<i64> {
         use Value::*;
         Some(match self {
-            &Bool(b) => b as i64,
+            &Bool(b) => i64::from(b),
             &Integer(n) => n,
             Nil => 0,
             _ => return None,
         })
     }
+    #[must_use]
     pub fn as_float(&self) -> Option<f64> {
         use Value::*;
         Some(match self {
-            &Bool(b) => b as u32 as f64,
+            &Bool(true) => 1.0,
+            Nil | &Bool(false) => 0.0,
             &Integer(n) => n as f64,
             &Float(n) => n,
-            Nil => 0.0,
-            _ => return None,
+            String(_) => return None,
         })
     }
 }
@@ -58,6 +61,6 @@ impl From<String> for Value {
 
 impl<T: Into<Value>> From<Option<T>> for Value {
     fn from(value: Option<T>) -> Self {
-        value.map(Into::into).unwrap_or(Self::Nil)
+        value.map_or(Self::Nil, Into::into)
     }
 }

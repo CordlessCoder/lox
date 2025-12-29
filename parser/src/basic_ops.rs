@@ -1,3 +1,4 @@
+#![allow(clippy::inline_always)]
 use std::{
     collections::VecDeque,
     fmt::{Debug, Display},
@@ -7,8 +8,10 @@ use crate::Parser;
 use diagnostics::{AggregateError, ErrorComponent};
 use lexer::{SToken, Token};
 use source::{SourceFile, Span};
+use utils::Spanned;
 
 impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s, Tokens> {
+    #[must_use]
     pub fn new(source: SourceFile, tokens: Tokens) -> Self {
         Self {
             tokens,
@@ -25,16 +28,9 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
     pub(crate) fn add_lexer_error(&mut self, err: ErrorComponent) {
         self.lexer_errors.add_error(err);
     }
-    pub(crate) fn new_parse_error(
-        &mut self,
-        span: Span,
-        message: impl ToString,
-    ) -> &mut ErrorComponent {
-        self.errors.add_error(ErrorComponent::new(
-            self.source.clone(),
-            message.to_string(),
-            span,
-        ))
+    pub(crate) fn new_parse_error(&mut self, span: Span, message: String) -> &mut ErrorComponent {
+        self.errors
+            .add_error(ErrorComponent::new(self.source.clone(), message, span))
     }
     #[inline(always)]
     pub(crate) fn advance(&mut self) -> Option<SToken<'s>> {
@@ -77,13 +73,13 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
     }
     #[inline]
     pub(crate) fn peek_next_span(&mut self) -> Option<Span> {
-        self.peek_next().map(|s| s.as_span())
+        self.peek_next().map(Spanned::as_span)
     }
     #[inline]
     pub(crate) fn peek_next_split(&mut self) -> (Option<&Token<'s>>, Span) {
         let end_span = self.end_span();
         let next = self.peek_next();
-        let span = next.map(|t| t.as_span()).unwrap_or(end_span);
+        let span = next.map_or(end_span, Spanned::as_span);
         let next = next.map(|n| &n.inner);
         (next, span)
     }

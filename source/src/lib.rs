@@ -10,24 +10,30 @@ pub use lines::*;
 pub struct SourceFile(Rc<SourceStorage>);
 
 impl SourceFile {
+    #[must_use]
     pub fn new(path: String, text: String) -> Self {
         let storage = SourceStorage::new(path, text);
         Self(Rc::new(storage))
     }
+    #[must_use]
     pub fn path(&self) -> &str {
         &self.0.path
     }
+    #[must_use]
     pub fn text(&self) -> &str {
         &self.0.text
     }
+    #[must_use]
     pub fn span_to_pos(&self, span: &Span) -> [HumanFilePos; 2] {
         [span.start, span.end.saturating_sub(1)].map(|o| self.offset_to_pos(o))
     }
     /// Panics if the provided offset is out of bounds of the text.
+    #[must_use]
     pub fn offset_to_pos(&self, offset: usize) -> HumanFilePos {
-        if offset > self.text().len() {
-            panic!("Cannot calculate an offset outside the file")
-        }
+        assert!(
+            offset <= self.text().len(),
+            "Cannot calculate an offset outside the file"
+        );
         let starts = self.0.line_starts();
         let line = starts
             .binary_search(&offset)
@@ -38,11 +44,10 @@ impl SourceFile {
             .text()
             .get(line_start..offset)
             // Count UTF-8 chars for columns
-            .map(|s| s.chars().count() as u32)
             // Fall back to byte columns if UTF-8 access fails
-            .unwrap_or(column_bytes);
+            .map_or(column_bytes, |s| u32::try_from(s.chars().count()).unwrap());
         // NOTE: Let's assume line and column counts > 2^32-1 won't be encountered *that* often.
-        let line = NonZero::new(line as u32 + 1).unwrap();
+        let line = NonZero::new(u32::try_from(line + 1).unwrap()).unwrap();
         let column = NonZero::new(column + 1).unwrap();
         HumanFilePos {
             line,
@@ -50,7 +55,8 @@ impl SourceFile {
             column_bytes,
         }
     }
-    pub fn lines<'s>(&'s self) -> LineIterator<'s> {
+    #[must_use]
+    pub fn lines(&self) -> LineIterator<'_> {
         let starts = self.0.line_starts();
         LineIterator {
             text: self.text(),
@@ -72,15 +78,19 @@ pub struct HumanFilePos {
 }
 
 impl HumanFilePos {
+    #[must_use]
     pub fn line(&self) -> usize {
         self.line.get() as usize
     }
+    #[must_use]
     pub fn line_0idx(&self) -> usize {
         self.line.get() as usize - 1
     }
+    #[must_use]
     pub fn col(&self) -> usize {
         self.column_utf8.get() as usize
     }
+    #[must_use]
     pub fn col_bytes(&self) -> usize {
         self.column_bytes as usize
     }
@@ -94,6 +104,7 @@ struct SourceStorage {
 }
 
 impl SourceStorage {
+    #[must_use]
     pub fn new(path: String, text: String) -> Self {
         SourceStorage {
             text,

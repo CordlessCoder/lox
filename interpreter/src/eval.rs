@@ -1,6 +1,6 @@
 use crate::LoxVm;
 use ast::{
-    BinaryExpr, BinaryOperator, Block, Decl, Expr, LiteralExpression, Stmt, UnaryExpr,
+    BinaryExpr, BinaryOperator, Block, Decl, Expr, For, LiteralExpression, Stmt, UnaryExpr,
     UnaryOperator,
 };
 use thiserror::Error;
@@ -33,16 +33,16 @@ pub enum EvalError {
 }
 
 pub trait Eval<'s> {
-    fn eval(self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError>;
+    fn eval(&mut self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError>;
 }
 
 impl<'s> Eval<'s> for Decl<'s> {
-    fn eval(self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError> {
+    fn eval(&mut self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError> {
         use Decl::*;
         match self {
             Stmt(s) => s.eval(lox),
             VarDecl { name, init } => {
-                let init = init.map(|v| v.eval(lox)).transpose()?.unwrap_or(Value::Nil);
+                let init = init.eval(lox)?;
                 lox.env.define(name, init);
                 Ok(Value::Nil)
             }
@@ -51,7 +51,7 @@ impl<'s> Eval<'s> for Decl<'s> {
 }
 
 impl<'s> Eval<'s> for Stmt<'s> {
-    fn eval(self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError> {
+    fn eval(&mut self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError> {
         use Stmt::*;
         match self {
             Expr(v) => {
@@ -64,6 +64,28 @@ impl<'s> Eval<'s> for Stmt<'s> {
                 Ok(Value::Nil)
             }
             Block(block) => block.eval(lox),
+            If {
+                cond,
+                then_body,
+                else_body,
+            } => {
+                let cond = cond.eval(lox)?;
+                if cond.as_bool().unwrap_or(false) {
+                    then_body.eval(lox)
+                } else {
+                    let Some(else_body) = else_body else {
+                        return Ok(Value::Nil);
+                    };
+                    else_body.eval(lox)
+                }
+            }
+            While { cond, body } => {
+                while cond.eval(lox)?.as_bool().unwrap_or_default() {
+                    body.eval(lox)?;
+                }
+                Ok(Value::Nil)
+            }
+            For(f) => f.eval(lox),
             other => {
                 unimplemented!("evaluation of {other:?} is not yet supported")
             }
@@ -72,7 +94,7 @@ impl<'s> Eval<'s> for Stmt<'s> {
 }
 
 impl<'s> Eval<'s> for Expr<'s> {
-    fn eval(self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError> {
+    fn eval(&mut self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError> {
         use Expr::*;
         match self {
             Ident(name) => {
@@ -86,7 +108,7 @@ impl<'s> Eval<'s> for Expr<'s> {
             Grouped(group) => group.eval(lox),
             Binary(bin) => bin.eval(lox),
             Assignment(assignment) => {
-                let ast::Assignment { target, val } = *assignment;
+                let ast::Assignment { target, val } = &mut **assignment;
                 let val = val.eval(lox)?;
                 lox.env.assign(target, val.clone())?;
                 Ok(val)
@@ -95,11 +117,36 @@ impl<'s> Eval<'s> for Expr<'s> {
     }
 }
 
+impl<'s> Eval<'s> for For<'s> {
+    fn eval(&mut self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError> {
+        let Self {
+            initializer,
+            cond,
+            increment,
+            body,
+        } = self;
+        lox.env.push_scope();
+        initializer.eval(lox)?;
+        let Some(cond) = cond else {
+            loop {
+                body.eval(lox)?;
+                increment.eval(lox)?;
+            }
+        };
+        while cond.eval(lox)?.as_bool().unwrap_or_default() {
+            body.eval(lox)?;
+            increment.eval(lox)?;
+        }
+        lox.env.pop_scope();
+        Ok(Value::Nil)
+    }
+}
+
 impl<'s> Eval<'s> for Block<'s> {
-    fn eval(self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError> {
+    fn eval(&mut self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError> {
         lox.env.push_scope();
         let mut error = None;
-        for stmt in self.0 {
+        for stmt in &mut self.0 {
             if let Err(err) = stmt.eval(lox) {
                 error = Some(err);
                 break;
@@ -111,7 +158,7 @@ impl<'s> Eval<'s> for Block<'s> {
 }
 
 impl<'s> Eval<'s> for BinaryExpr<'s> {
-    fn eval(self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError> {
+    fn eval(&mut self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError> {
         fn try_int_float_casts<R>(
             lhs: Value,
             op: BinaryOperator,
@@ -129,10 +176,11 @@ impl<'s> Eval<'s> for BinaryExpr<'s> {
         }
         use Value::*;
         let Self { lhs, op, rhs } = self;
+        let op = *op;
         let lhs = lhs.eval(lox)?;
-        let rhs = rhs.eval(lox)?;
+        let mut rhs = || rhs.eval(lox);
         Ok(match op {
-            BinaryOperator::Add => match (lhs, rhs) {
+            BinaryOperator::Add => match (lhs, rhs()?) {
                 (Nil, Nil) => Nil,
                 (Nil, right) => return Err(EvalError::BinaryWithNilLhs(op, right)),
                 (left, Nil) => return Err(EvalError::BinaryWithNilRhs(op, left)),
@@ -146,14 +194,14 @@ impl<'s> Eval<'s> for BinaryExpr<'s> {
                 }
                 (String(a), String(b)) => String(a + &b),
                 (Float(a), Float(b)) => Float(a + b),
-                (Bool(a), Bool(b)) => Integer(a as i64 + b as i64),
+                (Bool(a), Bool(b)) => Integer(i64::from(a) + i64::from(b)),
 
                 (Float(f), Integer(i)) | (Integer(i), Float(f)) => Float(f + i as f64),
-                (Integer(i), Bool(b)) | (Bool(b), Integer(i)) => Integer(i + b as i64),
+                (Integer(i), Bool(b)) | (Bool(b), Integer(i)) => Integer(i + i64::from(b)),
 
                 (lhs, rhs) => return Err(EvalError::InvalidBinary { lhs, op, rhs }),
             },
-            BinaryOperator::Sub => match (lhs, rhs) {
+            BinaryOperator::Sub => match (lhs, rhs()?) {
                 (Nil, Nil) => Nil,
                 (Nil, right) => return Err(EvalError::BinaryWithNilLhs(op, right)),
                 (left, Nil) => return Err(EvalError::BinaryWithNilRhs(op, left)),
@@ -166,14 +214,14 @@ impl<'s> Eval<'s> for BinaryExpr<'s> {
                     })?)
                 }
                 (Float(a), Float(b)) => Float(a - b),
-                (Bool(a), Bool(b)) => Integer(a as i64 - b as i64),
+                (Bool(a), Bool(b)) => Integer(i64::from(a) - i64::from(b)),
 
                 (Float(lhs), Integer(rhs)) => Float(lhs - rhs as f64),
                 (Integer(lhs), Float(rhs)) => Float(lhs as f64 - rhs),
 
                 (lhs, rhs) => return Err(EvalError::InvalidBinary { lhs, op, rhs }),
             },
-            BinaryOperator::Mul => match (lhs, rhs) {
+            BinaryOperator::Mul => match (lhs, rhs()?) {
                 (Nil, Nil) => Nil,
                 (Nil, right) => return Err(EvalError::BinaryWithNilLhs(op, right)),
                 (left, Nil) => return Err(EvalError::BinaryWithNilRhs(op, left)),
@@ -187,14 +235,14 @@ impl<'s> Eval<'s> for BinaryExpr<'s> {
                 }
 
                 (Float(a), Float(b)) => Float(a * b),
-                (Bool(a), Bool(b)) => Integer(a as i64 * b as i64),
+                (Bool(a), Bool(b)) => Integer(i64::from(a) * i64::from(b)),
 
                 (Float(lhs), Integer(rhs)) => Float(lhs * rhs as f64),
                 (Integer(lhs), Float(rhs)) => Float(lhs as f64 * rhs),
 
                 (lhs, rhs) => return Err(EvalError::InvalidBinary { lhs, op, rhs }),
             },
-            BinaryOperator::Div => match (lhs, rhs) {
+            BinaryOperator::Div => match (lhs, rhs()?) {
                 (Nil, Nil) => Nil,
                 (Nil, right) => return Err(EvalError::BinaryWithNilLhs(op, right)),
                 (left, Nil) => return Err(EvalError::BinaryWithNilRhs(op, left)),
@@ -217,47 +265,46 @@ impl<'s> Eval<'s> for BinaryExpr<'s> {
             BinaryOperator::Lt => Bool(try_int_float_casts(
                 lhs,
                 op,
-                rhs,
+                rhs()?,
                 |a, b| a < b,
                 |a, b| a < b,
             )?),
             BinaryOperator::Gt => Bool(try_int_float_casts(
                 lhs,
                 op,
-                rhs,
+                rhs()?,
                 |a, b| a > b,
                 |a, b| a > b,
             )?),
             BinaryOperator::Le => Bool(try_int_float_casts(
                 lhs,
                 op,
-                rhs,
+                rhs()?,
                 |a, b| a <= b,
                 |a, b| a <= b,
             )?),
             BinaryOperator::Ge => Bool(try_int_float_casts(
                 lhs,
                 op,
-                rhs,
+                rhs()?,
                 |a, b| a >= b,
                 |a, b| a >= b,
             )?),
-            BinaryOperator::Eq => Bool(lhs == rhs),
-            BinaryOperator::Ne => Bool(lhs != rhs),
-            BinaryOperator::And => {
-                Value::Bool(lhs.as_bool().unwrap_or_default() && rhs.as_bool().unwrap_or_default())
-            }
-            BinaryOperator::Or => {
-                Value::Bool(lhs.as_bool().unwrap_or_default() || rhs.as_bool().unwrap_or_default())
-            }
+            BinaryOperator::Eq => Bool(lhs == rhs()?),
+            BinaryOperator::Ne => Bool(lhs != rhs()?),
+            BinaryOperator::And if lhs.as_bool().unwrap_or_default() => rhs()?,
+            BinaryOperator::And => lhs,
+            BinaryOperator::Or if lhs.as_bool().unwrap_or_default() => lhs,
+            BinaryOperator::Or => rhs()?,
         })
     }
 }
 
 impl<'s> Eval<'s> for UnaryExpr<'s> {
-    fn eval(self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError> {
-        let UnaryExpr { op, val } = self;
+    fn eval(&mut self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError> {
         use Value::*;
+        let UnaryExpr { op, val } = self;
+        let op = *op;
         let val = val.eval(lox)?;
         Ok(match op {
             UnaryOperator::Not => match val {
@@ -267,7 +314,7 @@ impl<'s> Eval<'s> for UnaryExpr<'s> {
                 _ => return Err(EvalError::InvalidUnary { val, op }),
             },
             UnaryOperator::Neg => match val {
-                Nil => Integer(0),
+                Nil | Bool(false) => Integer(0),
                 Integer(n) => {
                     let Some(n) = n.checked_neg() else {
                         return Err(EvalError::NegOverflow(n));
@@ -275,7 +322,6 @@ impl<'s> Eval<'s> for UnaryExpr<'s> {
                     Integer(n)
                 }
                 Bool(true) => Integer(-1),
-                Bool(false) => Integer(0),
                 Float(f) => Float(-f),
                 _ => return Err(EvalError::InvalidUnary { val, op }),
             },
@@ -284,16 +330,25 @@ impl<'s> Eval<'s> for UnaryExpr<'s> {
 }
 
 impl<'s> Eval<'s> for LiteralExpression<'s> {
-    fn eval(self, _: &mut LoxVm<'s>) -> Result<Value, EvalError> {
+    fn eval(&mut self, _: &mut LoxVm<'s>) -> Result<Value, EvalError> {
         use LiteralExpression::*;
         Ok(match self {
             Nil => Value::Nil,
-            Bool(b) => Value::Bool(b),
-            Float(f) => Value::Float(f),
+            &mut Bool(b) => Value::Bool(b),
+            &mut Float(f) => Value::Float(f),
             // TODO: Proper char runtime types
-            Char(c) => Value::Integer(c as i64),
-            Int(n) => Value::Integer(n),
-            Str(s) => Value::String(s.into_owned()),
+            &mut Char(c) => Value::Integer(i64::from(u32::from(c))),
+            &mut Int(n) => Value::Integer(n),
+            Str(s) => Value::String(s.clone().into_owned()),
         })
+    }
+}
+
+impl<'s, T: Eval<'s>> Eval<'s> for Option<T> {
+    fn eval(&mut self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError> {
+        let Some(value) = self else {
+            return Ok(Value::Nil);
+        };
+        value.eval(lox)
     }
 }

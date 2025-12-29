@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-fn remove_underscores<'s>(s: &'s str) -> Cow<'s, str> {
+fn remove_underscores(s: &str) -> Cow<'_, str> {
     s.split('_')
         .map(Cow::from)
         .reduce(|a, b| (a.into_owned() + &b).into())

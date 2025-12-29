@@ -27,7 +27,7 @@ impl<'s> Environment<'s> {
     pub fn define(&mut self, name: &'s str, value: Value) {
         let old_value = self.scope.insert(name, value);
         if let Some(level) = self.layers.last_mut() {
-            level.push(Definition { name, old_value })
+            level.push(Definition { name, old_value });
         }
     }
     pub fn assign(&mut self, name: &'s str, value: Value) -> Result<(), EvalError> {

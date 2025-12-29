@@ -34,7 +34,7 @@ fn parse_and_ast_print(path: impl AsRef<Path>) {
         });
     let mut parser = parser::Parser::new(source.clone(), lexer);
     let render_context = RenderContext::default();
-    let (program, errors) = parser.parse();
+    let (mut program, errors) = parser.parse();
     eprint!("{}", errors.display(render_context));
 
     let writer = stdout();
@@ -43,7 +43,7 @@ fn parse_and_ast_print(path: impl AsRef<Path>) {
     program.fmt_tree(&mut ctx, &mut writer).unwrap();
 
     let mut vm = LoxVm::default();
-    _ = vm.run(program);
+    _ = vm.run(&mut program);
 }
 
 fn main() {

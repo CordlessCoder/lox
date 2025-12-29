@@ -11,16 +11,22 @@ pub struct LoxVm<'s> {
 }
 
 impl<'s> LoxVm<'s> {
-    pub fn run(&mut self, program: Program<'s>) -> Result<(), Vec<EvalError>> {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            env: Environment::new(),
+        }
+    }
+    pub fn run(&mut self, program: &mut Program<'s>) -> Result<(), Vec<EvalError>> {
         let mut errors = Vec::new();
-        for decl in program.declarations {
+        for decl in &mut program.declarations {
             if let Err(err) = decl.eval(self) {
                 errors.push(err);
-            };
+            }
         }
         if !errors.is_empty() {
             return Err(errors);
-        };
+        }
         Ok(())
     }
 }

@@ -1,7 +1,7 @@
 #![expect(unused)]
 use ast::{
-    Assignment, BinaryExpr, BinaryOperator, Decl, Expr, LiteralExpression, Program, Stmt,
-    UnaryExpr, UnaryOperator,
+    Assignment, BinaryExpr, BinaryOperator, Block, Decl, Expr, For, LiteralExpression, Program,
+    Stmt, UnaryExpr, UnaryOperator,
 };
 use diagnostics::{AggregateError, ErrorComponent};
 use lexer::{SToken, Token};
@@ -353,7 +353,7 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
         self.assignment()
     }
     fn assignment(&mut self) -> Option<Expr<'s>> {
-        let expr = self.equality()?;
+        let expr = self.or()?;
         if let Some(eq) = self.advance_if(|t| matches!(t, Token::Eq)) {
             let val = self.assignment()?;
             match expr {
@@ -368,6 +368,30 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
         }
 
         Some(expr)
+    }
+    fn or(&mut self) -> Option<Expr<'s>> {
+        let mut lhs = self.and()?;
+        while self.consume_if(|tok| matches!(tok, Token::Or)) {
+            let rhs = self.and()?;
+            lhs = Expr::Binary(Box::new(BinaryExpr {
+                lhs,
+                op: BinaryOperator::Or,
+                rhs,
+            }));
+        }
+        Some(lhs)
+    }
+    fn and(&mut self) -> Option<Expr<'s>> {
+        let mut lhs = self.equality()?;
+        while self.consume_if(|tok| matches!(tok, Token::And)) {
+            let rhs = self.and()?;
+            lhs = Expr::Binary(Box::new(BinaryExpr {
+                lhs,
+                op: BinaryOperator::And,
+                rhs,
+            }));
+        }
+        Some(lhs)
     }
     fn equality(&mut self) -> Option<Expr<'s>> {
         let mut expr = self.comparison()?;
@@ -488,7 +512,7 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
             Ident(name) => Expr::Ident(name),
             LParen => {
                 let Some(expr) = self.expression() else {
-                    self.new_parse_error(span, "Unterminated (");
+                    self.new_parse_error(span, "Unterminated (".to_string());
                     return None;
                 };
                 self.expect(&Token::RParen, "")?;
@@ -500,6 +524,74 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
             }
         })
     }
+    pub(crate) fn parse_block(&mut self) -> Option<Block<'s>> {
+        let mut block = Vec::new();
+        while self
+            .peek_next_split()
+            .0
+            .is_some_and(|t| !matches!(t, Token::RBrace))
+        {
+            let stmt = self.parse_decl()?;
+            block.push(stmt);
+        }
+        self.expect(&Token::RBrace, " to terminate a block")?;
+        Some(ast::Block(block))
+    }
+    pub(crate) fn parse_if(&mut self) -> Option<Stmt<'s>> {
+        let cond = self.expression()?;
+        self.expect(&Token::LBrace, " after if statement condition")?;
+        let then_body = self.parse_block()?;
+        let mut else_body = None;
+        if self.consume_if(|tok| matches!(tok, Token::Else)) {
+            self.expect(&Token::LBrace, " after else")?;
+            else_body = Some(self.parse_block()?);
+        }
+        Some(Stmt::If {
+            cond,
+            then_body,
+            else_body,
+        })
+    }
+    pub(crate) fn parse_while(&mut self) -> Option<Stmt<'s>> {
+        let cond = self.expression()?;
+        self.expect(&Token::LBrace, " after while condition")?;
+        let body = self.parse_block()?;
+        Some(Stmt::While { cond, body })
+    }
+    pub(crate) fn parse_for(&mut self) -> Option<Stmt<'s>> {
+        self.expect(&Token::LParen, " after for")?;
+        let initializer = if self.consume_if(|tok| matches!(tok, Token::Semicolon)) {
+            None
+        } else if self.consume_if(|tok| matches!(tok, Token::Var)) {
+            Some(self.parse_var_decl()?)
+        } else {
+            let expr = self.expression()?;
+            self.expect(&Token::Semicolon, " after for loop initializer")?;
+            Some(Decl::Stmt(Stmt::Expr(expr)))
+        };
+        let cond = if self.consume_if(|tok| matches!(tok, Token::Semicolon)) {
+            None
+        } else {
+            let expr = self.expression()?;
+            self.expect(&Token::Semicolon, " after for loop initializer")?;
+            Some(expr)
+        };
+        let increment = if self.consume_if(|tok| matches!(tok, Token::RParen)) {
+            None
+        } else {
+            let expr = self.expression()?;
+            self.expect(&Token::RParen, " after for loop initializer")?;
+            Some(expr)
+        };
+        self.expect(&Token::LBrace, " after for loop")?;
+        let body = self.parse_block()?;
+        Some(Stmt::For(Box::new(For {
+            initializer,
+            cond,
+            increment,
+            body,
+        })))
+    }
     pub(crate) fn parse_stmt(&mut self) -> Option<Stmt<'s>> {
         if self.consume_if(|t| matches!(t, Token::Print)) {
             let value = self.expression()?;
@@ -507,17 +599,16 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
             return Some(Stmt::Print { value });
         }
         if self.consume_if(|t| matches!(t, Token::LBrace)) {
-            let mut block = Vec::new();
-            while self
-                .peek_next_split()
-                .0
-                .is_some_and(|t| !matches!(t, Token::RBrace))
-            {
-                let stmt = self.parse_decl()?;
-                block.push(stmt);
-            }
-            self.expect(&Token::RBrace, " to terminate a block")?;
-            return Some(Stmt::Block(ast::Block(block)));
+            return Some(Stmt::Block(self.parse_block()?));
+        }
+        if self.consume_if(|t| matches!(t, Token::If)) {
+            return self.parse_if();
+        }
+        if self.consume_if(|t| matches!(t, Token::While)) {
+            return self.parse_while();
+        }
+        if self.consume_if(|t| matches!(t, Token::For)) {
+            return self.parse_for();
         }
         let value = self.expression()?;
         self.expect(&Token::Semicolon, "");
@@ -578,16 +669,19 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
         //         }
         //     }
     }
+    pub(crate) fn parse_var_decl(&mut self) -> Option<Decl<'s>> {
+        let name = self.expect_ident(" in variable declaration")?;
+
+        let mut init = None;
+        if self.consume_if(|t| matches!(t, Token::Eq)) {
+            init = Some(self.expression()?);
+        }
+        self.expect(&Token::Semicolon, " after variable declaration");
+        Some(Decl::VarDecl { name, init })
+    }
     pub(crate) fn parse_decl(&mut self) -> Option<Decl<'s>> {
         if self.consume_if(|t| matches!(t, Token::Var)) {
-            let name = self.expect_ident(" in variable declaration")?;
-
-            let mut init = None;
-            if self.consume_if(|t| matches!(t, Token::Eq)) {
-                init = Some(self.expression()?);
-            }
-            self.expect(&Token::Semicolon, " after variable declaration");
-            return Some(Decl::VarDecl { name, init });
+            return self.parse_var_decl();
         }
         let stmt = self.parse_stmt()?;
         Some(Decl::Stmt(stmt))

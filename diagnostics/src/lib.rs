@@ -1,5 +1,5 @@
 //! The main idea behind the diagnostic structure is that an error message can be composed of
-//! multiple [ErrorComponent]s.
+//! multiple [`ErrorComponent`]s.
 //! For example, an error message like:
 //!
 //!```rust,ignore
@@ -29,12 +29,15 @@ pub struct AggregateError {
 }
 
 impl AggregateError {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.components.is_empty()
     }
+    #[must_use]
     pub fn has_error(&self) -> bool {
         self.components.iter().any(|c| c.level == ErrorLevel::Error)
     }
@@ -61,6 +64,7 @@ pub struct ErrorComponent {
 }
 
 impl ErrorComponent {
+    #[must_use]
     pub fn new(source: SourceFile, short_message: String, span: Span) -> Self {
         ErrorComponent {
             short_message,
@@ -71,16 +75,16 @@ impl ErrorComponent {
             highlight_message: None,
         }
     }
-    pub fn set_highlight_message(&mut self, message: impl ToString) -> &mut Self {
-        self.highlight_message = Some(message.to_string());
+    pub fn set_highlight_message(&mut self, message: String) -> &mut Self {
+        self.highlight_message = Some(message);
         self
     }
     pub fn set_level(&mut self, level: ErrorLevel) -> &mut Self {
         self.level = level;
         self
     }
-    pub fn set_long_message(&mut self, message: impl ToString) -> &mut Self {
-        self.long_message = message.to_string();
+    pub fn set_long_message(&mut self, message: String) -> &mut Self {
+        self.long_message = message;
         self
     }
 }

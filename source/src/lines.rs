@@ -17,6 +17,7 @@ pub struct TextLine<'s> {
 }
 
 impl<'s> LineIterator<'s> {
+    #[must_use]
     pub fn get_line(&self, line: usize) -> Option<TextLine<'s>> {
         let start = *self.line_starts.get(line)?;
         let end = self
@@ -30,13 +31,13 @@ impl<'s> LineIterator<'s> {
     }
 }
 
-impl<'s> ExactSizeIterator for LineIterator<'s> {
+impl ExactSizeIterator for LineIterator<'_> {
     fn len(&self) -> usize {
         self.remaining.len()
     }
 }
 
-impl<'s> FusedIterator for LineIterator<'s> {}
+impl FusedIterator for LineIterator<'_> {}
 
 impl<'s> Iterator for LineIterator<'s> {
     type Item = TextLine<'s>;
@@ -56,7 +57,7 @@ impl<'s> Iterator for LineIterator<'s> {
     }
 }
 
-impl<'s> DoubleEndedIterator for LineIterator<'s> {
+impl DoubleEndedIterator for LineIterator<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         let line = self.remaining.next_back()?;
         self.get_line(line)

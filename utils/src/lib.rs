@@ -13,6 +13,7 @@ impl<T> From<(T, Range<usize>)> for Spanned<T> {
 }
 
 impl<T> Spanned<T> {
+    #[must_use]
     pub const fn new(inner: T, span: Range<usize>) -> Self {
         Self { inner, span }
     }

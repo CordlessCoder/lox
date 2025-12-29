@@ -20,6 +20,7 @@ pub struct TreeCtx {
     pub end_connector: &'static str,
 }
 impl TreeCtx {
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             prefix: Vec::new(),
@@ -84,6 +85,20 @@ impl TreeCtx {
         name: &str,
         val: &impl TreeDisplay,
     ) -> fmt::Result {
+        self.with_indentation(writer, name)?;
+        self.add_level();
+        self.make_last();
+        val.fmt_tree(self, writer)?;
+        self.pop_level();
+        Ok(())
+    }
+    fn fmt_optional_field(
+        &mut self,
+        writer: &mut impl Write,
+        name: &str,
+        val: Option<&impl TreeDisplay>,
+    ) -> fmt::Result {
+        let Some(val) = val else { return Ok(()) };
         self.with_indentation(writer, name)?;
         self.add_level();
         self.make_last();
@@ -180,6 +195,40 @@ impl TreeDisplay for Stmt<'_> {
                 ctx.fmt_single_field(writer, "Cond", cond)?;
                 ctx.make_last();
                 ctx.fmt_single_field(writer, "Body", body)?;
+                ctx.pop_level();
+            }
+            If {
+                cond,
+                then_body,
+                else_body,
+            } => {
+                ctx.with_indentation(writer, "If")?;
+                ctx.add_level();
+                ctx.fmt_single_field(writer, "Cond", cond)?;
+                if else_body.is_none() {
+                    ctx.make_last();
+                }
+                ctx.fmt_single_field(writer, "Then", then_body)?;
+                ctx.make_last();
+                if let Some(else_body) = else_body {
+                    ctx.fmt_single_field(writer, "Else", else_body)?;
+                }
+                ctx.pop_level();
+            }
+            For(f) => {
+                let crate::For {
+                    initializer,
+                    cond,
+                    increment,
+                    body,
+                } = &**f;
+                ctx.with_indentation(writer, "For")?;
+                ctx.add_level();
+                ctx.fmt_optional_field(writer, "Initializer", initializer.as_ref())?;
+                ctx.fmt_optional_field(writer, "Condition", cond.as_ref())?;
+                ctx.fmt_optional_field(writer, "Increment", increment.as_ref())?;
+                ctx.make_last();
+                body.fmt_tree(ctx, writer)?;
                 ctx.pop_level();
             } // Function(f) => ctx.fmt_single_field(writer, "Function", f)?,
               // Use { module, alias } => {
@@ -301,13 +350,14 @@ impl TreeDisplay for Expr<'_> {
             Binary(op) => op.fmt_tree(ctx, writer),
             Unary(op) => op.fmt_tree(ctx, writer),
             Grouped(g) => ctx.fmt_single_field(writer, "Group", &**g),
-            Assignment(assignment) => assignment.fmt_tree(ctx, writer), // Ternary(tern) => tern.fmt_tree(ctx, writer),
-                                                                        // Call(c) => c.fmt_tree(ctx, writer),
-                                                                        // Assignment(a) => a.fmt_tree(ctx, writer),
-                                                                        // MemberAccess(a) => a.fmt_tree(ctx, writer),
-                                                                        // NamespaceAccess(n) => n.fmt_tree(ctx, writer),
-                                                                        // Array(val) => ctx.fmt_single_field_flat(writer, "Array", &&val[..]),
-                                                                        // Intrinsic(i) => i.fmt_tree(ctx, writer),
+            Assignment(assignment) => assignment.fmt_tree(ctx, writer),
+            // Ternary(tern) => tern.fmt_tree(ctx, writer),
+            // Call(c) => c.fmt_tree(ctx, writer),
+            // Assignment(a) => a.fmt_tree(ctx, writer),
+            // MemberAccess(a) => a.fmt_tree(ctx, writer),
+            // NamespaceAccess(n) => n.fmt_tree(ctx, writer),
+            // Array(val) => ctx.fmt_single_field_flat(writer, "Array", &&val[..]),
+            // Intrinsic(i) => i.fmt_tree(ctx, writer),
         }
     }
 }

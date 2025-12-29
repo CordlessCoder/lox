@@ -47,14 +47,14 @@ impl RenderContext {
         // Clamp end to start to ensure start <= end
         let line_range = line_range.start..line_range.end.max(line_range.start);
         if line_range.is_empty() {
-            write_header(writer, Some(line.line as u32 + 1))?;
+            write_header(writer, Some(u32::try_from(line.line).unwrap() + 1))?;
             return write!(writer, "{text}");
         };
         let before = &line.text[..line_range.start];
         let highlighted = &line.text[line_range.clone()];
         let after = &line.text[line_range.end..];
-        write_header(writer, Some(line.line as u32 + 1))?;
-        writeln!(writer, "{before}{}{after}", highlighted)?;
+        write_header(writer, Some(u32::try_from(line.line).unwrap() + 1))?;
+        writeln!(writer, "{before}{highlighted}{after}")?;
         write_header(writer, None)?;
         write!(writer, "{:width$}", "", width = before.chars().count())?;
         write!(

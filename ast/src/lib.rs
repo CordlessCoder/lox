@@ -26,7 +26,7 @@ pub enum LiteralExpression<'s> {
     Nil,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum BinaryOperator {
     // and
     And,
@@ -100,9 +100,14 @@ pub enum Stmt<'s> {
     Return(Option<Expr<'s>>),
     Break,
     Continue,
-    While { cond: Expr<'s>, body: Block<'s> },
+    While {
+        cond: Expr<'s>,
+        body: Block<'s>,
+    },
     Block(Block<'s>),
-    Print { value: Expr<'s> },
+    Print {
+        value: Expr<'s>,
+    },
     // /// A function definition with parameter names
     //     Function(Function<'s>),
     //     Use {
@@ -116,12 +121,14 @@ pub enum Stmt<'s> {
     //         public: bool,
     //         mutable: bool,
     //     },
-    //     If {
-    //         cond: Expr<'s>,
-    //         then_body: Block<'s>,
-    //         elifs: Vec<Elif<'s>>,
-    //         else_body: Option<Block<'s>>,
-    //     },
+    If {
+        cond: Expr<'s>,
+        then_body: Block<'s>,
+        // TODO: Add else if
+        // elifs: Vec<Elif<'s>>,
+        else_body: Option<Block<'s>>,
+    },
+    For(Box<For<'s>>),
     //     TypeDecl {
     //         ty: TypeDecl<'s>,
     //         public: bool,
@@ -139,6 +146,14 @@ pub enum Stmt<'s> {
     //         cases: Vec<SwitchCase<'s>>,
     //         default: Option<Box<Stmt<'s>>>,
     //     },
+}
+
+#[derive(Debug, Clone)]
+pub struct For<'s> {
+    pub initializer: Option<Decl<'s>>,
+    pub cond: Option<Expr<'s>>,
+    pub increment: Option<Expr<'s>>,
+    pub body: Block<'s>,
 }
 
 #[derive(Debug, Clone)]
