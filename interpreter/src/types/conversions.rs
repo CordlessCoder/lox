@@ -2,18 +2,18 @@ use std::{rc::Rc, time::Instant};
 
 use super::Value;
 
-impl Value {
+impl Value<'_> {
     #[must_use]
-    pub fn as_bool(&self) -> Option<bool> {
+    pub fn truthy(&self) -> bool {
         use Value::*;
-        Some(match self {
+        match self {
             Instant(_) | Callable(_) => true,
             &Bool(b) => b,
             &Integer(n) => n != 0,
             &Float(n) => n != 0.0,
             Nil => false,
             String(s) => !s.is_empty(),
-        })
+        }
     }
     #[must_use]
     pub fn as_int(&self) -> Option<i64> {
@@ -38,37 +38,37 @@ impl Value {
     }
 }
 
-impl From<Instant> for Value {
+impl From<Instant> for Value<'_> {
     fn from(value: Instant) -> Self {
         Self::Instant(value)
     }
 }
 
-impl From<i64> for Value {
+impl From<i64> for Value<'_> {
     fn from(value: i64) -> Self {
         Self::Integer(value)
     }
 }
 
-impl From<f64> for Value {
+impl From<f64> for Value<'_> {
     fn from(value: f64) -> Self {
         Self::Float(value)
     }
 }
 
-impl From<bool> for Value {
+impl From<bool> for Value<'_> {
     fn from(value: bool) -> Self {
         Self::Bool(value)
     }
 }
 
-impl From<String> for Value {
+impl From<String> for Value<'_> {
     fn from(value: String) -> Self {
         Self::String(Rc::new(value))
     }
 }
 
-impl<T: Into<Self>> From<Option<T>> for Value {
+impl<T: Into<Self>> From<Option<T>> for Value<'_> {
     fn from(value: Option<T>) -> Self {
         value.map_or(Self::Nil, Into::into)
     }

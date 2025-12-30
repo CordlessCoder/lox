@@ -49,7 +49,7 @@ impl RenderContext {
         if line_range.is_empty() {
             write_header(writer, Some(u32::try_from(line.line).unwrap() + 1))?;
             return write!(writer, "{text}");
-        };
+        }
         let before = &line.text[..line_range.start];
         let highlighted = &line.text[line_range.clone()];
         let after = &line.text[line_range.end..];

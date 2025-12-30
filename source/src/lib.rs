@@ -39,7 +39,7 @@ impl SourceFile {
             .binary_search(&offset)
             .unwrap_or_else(|l| l.saturating_sub(1));
         let line_start = starts.get(line).copied().unwrap_or(0);
-        let column_bytes = offset.checked_sub(line_start).unwrap() as u32;
+        let column_bytes = u32::try_from(offset.checked_sub(line_start).unwrap()).unwrap();
         let column = self
             .text()
             .get(line_start..offset)

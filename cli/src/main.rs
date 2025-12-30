@@ -34,16 +34,20 @@ fn parse_and_ast_print(path: impl AsRef<Path>) {
         });
     let mut parser = parser::Parser::new(source.clone(), lexer);
     let render_context = RenderContext::default();
-    let (mut program, errors) = parser.parse();
-    eprint!("{}", errors.display(render_context));
+    let (program, errors) = parser.parse();
 
     let writer = stdout();
     let mut writer = FmtToIoWrite(writer);
     let mut ctx = TreeCtx::new();
     program.fmt_tree(&mut ctx, &mut writer).unwrap();
 
+    if !errors.is_empty() {
+        eprint!("{}", errors.display(render_context));
+        return;
+    }
+
     let mut vm = LoxVm::default();
-    _ = vm.run(&mut program);
+    dbg!(vm.run(&program).unwrap());
 }
 
 fn main() {

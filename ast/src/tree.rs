@@ -2,7 +2,7 @@ use std::fmt::{self, Display, Write};
 
 use crate::{
     Assignment, BinaryExpr, BinaryOperator, Block, Call, Decl, Expr, LiteralExpression,
-    MemberAccess, Program, Stmt, UnaryExpr, UnaryOperator,
+    LogicalExpr, LogicalOperator, MemberAccess, Program, Stmt, UnaryExpr, UnaryOperator,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -326,6 +326,18 @@ impl TreeDisplay for BinaryExpr<'_> {
     }
 }
 
+impl TreeDisplay for LogicalExpr<'_> {
+    fn fmt_tree(&self, ctx: &mut TreeCtx, writer: &mut impl Write) -> fmt::Result {
+        self.op.fmt_tree(ctx, writer)?;
+        ctx.add_level();
+        self.lhs.fmt_tree(ctx, writer)?;
+        ctx.make_last();
+        self.rhs.fmt_tree(ctx, writer)?;
+        ctx.pop_level();
+        Ok(())
+    }
+}
+
 impl TreeDisplay for MemberAccess<'_> {
     fn fmt_tree(&self, ctx: &mut TreeCtx, writer: &mut impl Write) -> fmt::Result {
         ctx.with_indentation(writer, ".")?;
@@ -345,6 +357,7 @@ impl TreeDisplay for Expr<'_> {
             Lit(lit) => lit.fmt_tree(ctx, writer),
             Ident(name) => ctx.fmt_single_field(writer, "Ident", name),
             Binary(op) => op.fmt_tree(ctx, writer),
+            Logical(op) => op.fmt_tree(ctx, writer),
             Unary(op) => op.fmt_tree(ctx, writer),
             Grouped(g) => ctx.fmt_single_field(writer, "Group", &**g),
             Assignment(assignment) => assignment.fmt_tree(ctx, writer),
@@ -408,32 +421,13 @@ impl TreeDisplay for UnaryOperator {
 
 impl TreeDisplay for BinaryOperator {
     fn fmt_tree(&self, ctx: &mut TreeCtx, writer: &mut impl Write) -> fmt::Result {
-        use BinaryOperator::*;
-        let text = match self {
-            And => "and",
-            Or => "or",
-            Mul => "*",
-            Div => "/",
-            Add => "+",
-            Sub => "-",
-            Ne => "!=",
-            Eq => "==",
-            Lt => "<",
-            Le => "<=",
-            Gt => ">",
-            Ge => ">=",
-            // Mod => "%",
-            // Pow => "**",
-            // And => "&&",
-            // Or => "||",
-            // BitAnd => "&",
-            // BitOr => "|",
-            // BitXor => "^",
-            // Shl => "<<",
-            // Shr => ">>",
-            // Range => "..",
-        };
-        ctx.with_indentation(writer, text)
+        ctx.with_indentation(writer, self)
+    }
+}
+
+impl TreeDisplay for LogicalOperator {
+    fn fmt_tree(&self, ctx: &mut TreeCtx, writer: &mut impl Write) -> fmt::Result {
+        ctx.with_indentation(writer, self)
     }
 }
 
@@ -484,6 +478,21 @@ impl TreeDisplay for Decl<'_> {
                     ctx.make_last();
                     ctx.fmt_single_field(writer, "Init", init)?;
                 }
+                ctx.pop_level();
+                Ok(())
+            }
+            Fun(fun) => {
+                let crate::Fun {
+                    name,
+                    parameters,
+                    body,
+                } = &**fun;
+                ctx.with_indentation(writer, "Function Declaration")?;
+                ctx.add_level();
+                ctx.fmt_single_field(writer, "Name", name)?;
+                ctx.fmt_single_field(writer, "Parameters", &parameters.as_slice())?;
+                ctx.make_last();
+                ctx.fmt_single_field(writer, "Body", body)?;
                 ctx.pop_level();
                 Ok(())
             }

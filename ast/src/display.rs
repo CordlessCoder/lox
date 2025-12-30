@@ -28,6 +28,15 @@ impl Display for BinaryOperator {
             Ge => ">=",
             Eq => "==",
             Ne => "!=",
+        };
+        f.write_str(operator)
+    }
+}
+
+impl Display for LogicalOperator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use LogicalOperator::*;
+        let operator = match self {
             And => "and",
             Or => "or",
         };
@@ -36,6 +45,13 @@ impl Display for BinaryOperator {
 }
 
 impl Display for BinaryExpr<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self { lhs, op, rhs } = self;
+        write!(f, "({op} {lhs} {rhs})")
+    }
+}
+
+impl Display for LogicalExpr<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self { lhs, op, rhs } = self;
         write!(f, "({op} {lhs} {rhs})")
@@ -89,6 +105,7 @@ impl Display for Expr<'_> {
             Expr::Lit(literal) => literal.fmt(f),
             Expr::Grouped(expr) => write!(f, "(group {expr})"),
             Expr::Binary(binary) => binary.fmt(f),
+            Expr::Logical(logical) => logical.fmt(f),
             Expr::Unary(unary) => unary.fmt(f),
             Expr::Assignment(assignment) => assignment.fmt(f),
             Expr::Call(call) => call.fmt(f),

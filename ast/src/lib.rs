@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, rc::Rc};
 mod display;
 pub mod tree;
 
@@ -14,6 +14,14 @@ pub enum Decl<'s> {
         name: &'s str,
         init: Option<Expr<'s>>,
     },
+    Fun(Rc<Fun<'s>>),
+}
+
+#[derive(Debug, Clone)]
+pub struct Fun<'s> {
+    pub name: &'s str,
+    pub parameters: Vec<&'s str>,
+    pub body: Block<'s>,
 }
 
 #[derive(Debug, Clone)]
@@ -28,10 +36,6 @@ pub enum LiteralExpression<'s> {
 
 #[derive(Debug, Clone, Copy)]
 pub enum BinaryOperator {
-    // and
-    And,
-    // or
-    Or,
     /// +
     Add,
     /// -
@@ -54,10 +58,25 @@ pub enum BinaryOperator {
     Ge,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum LogicalOperator {
+    /// and
+    And,
+    /// or
+    Or,
+}
+
 #[derive(Debug, Clone)]
 pub struct BinaryExpr<'s> {
     pub lhs: Expr<'s>,
     pub op: BinaryOperator,
+    pub rhs: Expr<'s>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LogicalExpr<'s> {
+    pub lhs: Expr<'s>,
+    pub op: LogicalOperator,
     pub rhs: Expr<'s>,
 }
 
@@ -80,6 +99,7 @@ pub enum Expr<'s> {
     Lit(LiteralExpression<'s>),
     Ident(&'s str),
     Binary(Box<BinaryExpr<'s>>),
+    Logical(Box<LogicalExpr<'s>>),
     Unary(Box<UnaryExpr<'s>>),
     Call(Box<Call<'s>>),
     Grouped(Box<Self>),
