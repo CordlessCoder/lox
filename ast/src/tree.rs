@@ -1,8 +1,8 @@
 use std::fmt::{self, Display, Write};
 
 use crate::{
-    Assignment, BinaryExpr, BinaryOperator, Block, Decl, Expr, LiteralExpression, MemberAccess,
-    Program, Stmt, UnaryExpr, UnaryOperator,
+    Assignment, BinaryExpr, BinaryOperator, Block, Call, Decl, Expr, LiteralExpression,
+    MemberAccess, Program, Stmt, UnaryExpr, UnaryOperator,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -186,9 +186,6 @@ impl TreeDisplay for Stmt<'_> {
             Expr(e) => e.fmt_tree(ctx, writer)?,
             Return(e) => ctx.fmt_single_field(writer, "Return", &e.as_ref())?,
             Block(b) => b.fmt_tree(ctx, writer)?,
-            Print { value } => {
-                ctx.fmt_single_field(writer, "Print", value)?;
-            }
             While { cond, body } => {
                 ctx.with_indentation(writer, "While")?;
                 ctx.add_level();
@@ -351,6 +348,7 @@ impl TreeDisplay for Expr<'_> {
             Unary(op) => op.fmt_tree(ctx, writer),
             Grouped(g) => ctx.fmt_single_field(writer, "Group", &**g),
             Assignment(assignment) => assignment.fmt_tree(ctx, writer),
+            Call(call) => call.fmt_tree(ctx, writer),
             // Ternary(tern) => tern.fmt_tree(ctx, writer),
             // Call(c) => c.fmt_tree(ctx, writer),
             // Assignment(a) => a.fmt_tree(ctx, writer),
@@ -451,9 +449,22 @@ impl TreeDisplay for Assignment<'_> {
     }
 }
 
+impl TreeDisplay for Call<'_> {
+    fn fmt_tree(&self, ctx: &mut TreeCtx, writer: &mut impl Write) -> fmt::Result {
+        let Self { callee, arguments } = self;
+        ctx.with_indentation(writer, "Call")?;
+        ctx.add_level();
+        ctx.fmt_single_field(writer, "Callee", callee)?;
+        ctx.make_last();
+        ctx.fmt_single_field(writer, "Arguments", &&**arguments)?;
+        ctx.pop_level();
+        Ok(())
+    }
+}
+
 impl TreeDisplay for Program<'_> {
     fn fmt_tree(&self, ctx: &mut TreeCtx, writer: &mut impl Write) -> fmt::Result {
-        ctx.fmt_single_field_flat(writer, "Progra", &self.declarations.as_slice())
+        ctx.fmt_single_field_flat(writer, "Program", &self.declarations.as_slice())
     }
 }
 

@@ -1,10 +1,14 @@
-use crate::LoxVm;
+use std::rc::Rc;
+
+use crate::{
+    LoxVm,
+    types::{Callable, Value},
+};
 use ast::{
-    BinaryExpr, BinaryOperator, Block, Decl, Expr, For, LiteralExpression, Stmt, UnaryExpr,
+    BinaryExpr, BinaryOperator, Block, Call, Decl, Expr, For, LiteralExpression, Stmt, UnaryExpr,
     UnaryOperator,
 };
 use thiserror::Error;
-use vm_types::Value;
 
 #[derive(Debug, Clone, Error)]
 pub enum EvalError {
@@ -18,6 +22,14 @@ pub enum EvalError {
         op: BinaryOperator,
         rhs: Value,
     },
+    #[error(
+        "Invalid number of arguments for callee {callee}, expected {arity}, but got {count} arguments. The arguments were {args:?}",
+        arity = callee.arity().unwrap(),
+        count = args.len()
+    )]
+    InvalidArgumentCount { callee: Callable, args: Vec<Value> },
+    #[error("Invalid callee {0}")]
+    InvalidCallee(Value),
     #[error("Negation operation -{0:?} would overflow")]
     NegOverflow(i64),
     #[error("{lhs} {op} {rhs} would overflow")]
@@ -56,11 +68,6 @@ impl<'s> Eval<'s> for Stmt<'s> {
         match self {
             Expr(v) => {
                 v.eval(lox)?;
-                Ok(Value::Nil)
-            }
-            Print { value } => {
-                let val = value.eval(lox)?;
-                println!("{val}");
                 Ok(Value::Nil)
             }
             Block(block) => block.eval(lox),
@@ -113,6 +120,7 @@ impl<'s> Eval<'s> for Expr<'s> {
                 lox.env.assign(target, val.clone())?;
                 Ok(val)
             }
+            Call(call) => call.eval(lox),
         }
     }
 }
@@ -193,7 +201,10 @@ impl<'s> Eval<'s> for BinaryExpr<'s> {
                             rhs: rhs.into(),
                         },
                     )?),
-                    (String(a), String(b)) => String(a + &b),
+                    (String(mut a), String(b)) => {
+                        *Rc::make_mut(&mut a) += &b;
+                        String(a)
+                    }
                     (Float(a), Float(b)) => Float(a + b),
                     (Bool(a), Bool(b)) => Integer(i64::from(a) + i64::from(b)),
 
@@ -308,6 +319,26 @@ impl<'s> Eval<'s> for BinaryExpr<'s> {
     }
 }
 
+impl<'s> Eval<'s> for Call<'s> {
+    fn eval(&mut self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError> {
+        let Self { callee, arguments } = self;
+        let callee = match callee.eval(lox)? {
+            Value::Callable(callee) => callee,
+            other => return Err(EvalError::InvalidCallee(other)),
+        };
+        let args: Vec<Value> = arguments
+            .iter_mut()
+            .map(|expr| expr.eval(lox))
+            .collect::<Result<_, _>>()?;
+        if let Some(arity) = callee.arity()
+            && args.len() != arity
+        {
+            return Err(EvalError::InvalidArgumentCount { callee, args });
+        }
+        callee.call(lox, &args)
+    }
+}
+
 impl<'s> Eval<'s> for UnaryExpr<'s> {
     fn eval(&mut self, lox: &mut LoxVm<'s>) -> Result<Value, EvalError> {
         use Value::*;
@@ -347,7 +378,7 @@ impl<'s> Eval<'s> for LiteralExpression<'s> {
             // TODO: Proper char runtime types
             &mut Char(c) => Value::Integer(i64::from(u32::from(c))),
             &mut Int(n) => Value::Integer(n),
-            Str(s) => Value::String(s.clone().into_owned()),
+            Str(s) => Value::String(Rc::new(s.clone().into_owned())),
         })
     }
 }

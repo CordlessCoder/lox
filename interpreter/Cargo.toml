@@ -9,4 +9,3 @@ diagnostics = { version = "0.1.0", path = "../diagnostics" }
 owo-colors = "4.2.3"
 source = { version = "0.1.0", path = "../source" }
 thiserror = "2.0.17"
-vm_types = { version = "0.1.0", path = "../vm_types" }

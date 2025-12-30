@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
-use vm_types::Value;
-
-use crate::eval::EvalError;
+use crate::{eval::EvalError, types::Value};
 
 type Scope<'s> = HashMap<&'s str, Value>;
 #[derive(Debug, Clone)]

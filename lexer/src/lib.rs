@@ -39,9 +39,6 @@ pub enum Token<'s> {
     #[token("or")]
     /// or
     Or,
-    #[token("print")]
-    /// print
-    Print,
     #[token("return")]
     /// return
     Return,
@@ -174,8 +171,10 @@ mod tests {
             [
                 // Your first Lox program!
                 // print "\"Hello, world\"!";
-                Print,
+                Ident("print"),
+                LParen,
                 string("\"Hello, world\"!"),
+                RParen,
                 Semicolon
             ]
             .as_slice()

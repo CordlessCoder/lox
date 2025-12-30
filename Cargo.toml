@@ -1,5 +1,5 @@
 [workspace]
-members = ["ast", "cli", "diagnostics", "interpreter", "lexer", "parser", "source", "utils", "vm_types"]
+members = ["ast", "cli", "diagnostics", "interpreter", "lexer", "parser", "source", "utils"]
 resolver = "3"
 
 [profile.dev]

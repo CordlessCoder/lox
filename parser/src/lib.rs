@@ -1,7 +1,7 @@
 #![expect(unused)]
 use ast::{
-    Assignment, BinaryExpr, BinaryOperator, Block, Decl, Expr, For, LiteralExpression, Program,
-    Stmt, UnaryExpr, UnaryOperator,
+    Assignment, BinaryExpr, BinaryOperator, Block, Call, Decl, Expr, For, LiteralExpression,
+    Program, Stmt, UnaryExpr, UnaryOperator,
 };
 use diagnostics::{AggregateError, ErrorComponent};
 use lexer::{SToken, Token};
@@ -341,7 +341,7 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
         while let Some(tok) = self.advance() {
             use Token::*;
             if matches!(prev.inner, Token::Semicolon)
-                || matches!(tok.inner, Fun | Var | For | If | While | Print | Return)
+                || matches!(tok.inner, Fun | Var | For | If | While | Return)
             {
                 self.put_back(tok);
                 return;
@@ -489,7 +489,7 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
         let op = match peeked.inner {
             Minus => UnaryOperator::Neg,
             Not => UnaryOperator::Not,
-            _ => return self.primary(),
+            _ => return self.call(),
         };
         let span = peeked.span.clone();
         // consume the value we just peeked
@@ -501,6 +501,29 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
             }
             Some(expr) => Expr::Unary(Box::new(UnaryExpr { op, val: expr })),
         })
+    }
+    fn call(&mut self) -> Option<Expr<'s>> {
+        let mut expr = self.primary()?;
+        while self.consume_if_eq(&Token::LParen) {
+            // NOTE: Should there be a limit on the number of arguments that can be passed to a
+            // procedure?
+            let mut arguments = Vec::new();
+            while self
+                .peek_next()
+                .is_some_and(|tok| !matches!(tok.inner, Token::RParen))
+            {
+                arguments.push(self.expression()?);
+                if !self.consume_if_eq(&Token::Comma) {
+                    break;
+                }
+            }
+            self.expect(&Token::RParen, " after call arguments")?;
+            expr = Expr::Call(Box::new(Call {
+                callee: expr,
+                arguments,
+            }))
+        }
+        Some(expr)
     }
     fn primary(&mut self) -> Option<Expr<'s>> {
         use crate::Token::*;
@@ -595,11 +618,6 @@ impl<'s, Tokens: Iterator<Item = Result<SToken<'s>, ErrorComponent>>> Parser<'s,
         })))
     }
     pub(crate) fn parse_stmt(&mut self) -> Option<Stmt<'s>> {
-        if self.consume_if_eq(&Token::Print) {
-            let value = self.expression()?;
-            self.expect(&Token::Semicolon, "");
-            return Some(Stmt::Print { value });
-        }
         if self.consume_if_eq(&Token::LBrace) {
             return Some(Stmt::Block(self.parse_block()?));
         }

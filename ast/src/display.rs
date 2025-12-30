@@ -67,6 +67,21 @@ impl Display for Assignment<'_> {
     }
 }
 
+impl Display for Call<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self { callee, arguments } = self;
+        write!(f, "(call {callee} [")?;
+        let mut arguments = arguments.iter();
+        if let Some(first) = arguments.next() {
+            write!(f, "{first}")?;
+        }
+        for arg in arguments {
+            write!(f, ", {arg}")?;
+        }
+        f.write_str("])")
+    }
+}
+
 impl Display for Expr<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -76,6 +91,7 @@ impl Display for Expr<'_> {
             Expr::Binary(binary) => binary.fmt(f),
             Expr::Unary(unary) => unary.fmt(f),
             Expr::Assignment(assignment) => assignment.fmt(f),
+            Expr::Call(call) => call.fmt(f),
         }
     }
 }

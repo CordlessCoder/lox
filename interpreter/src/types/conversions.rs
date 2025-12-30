@@ -1,10 +1,13 @@
+use std::{rc::Rc, time::Instant};
+
 use super::Value;
 
 impl Value {
     #[must_use]
-    pub const fn as_bool(&self) -> Option<bool> {
+    pub fn as_bool(&self) -> Option<bool> {
         use Value::*;
         Some(match self {
+            Instant(_) | Callable(_) => true,
             &Bool(b) => b,
             &Integer(n) => n != 0,
             &Float(n) => n != 0.0,
@@ -30,8 +33,14 @@ impl Value {
             Nil | &Bool(false) => 0.0,
             &Integer(n) => n as f64,
             &Float(n) => n,
-            String(_) => return None,
+            _ => return None,
         })
+    }
+}
+
+impl From<Instant> for Value {
+    fn from(value: Instant) -> Self {
+        Self::Instant(value)
     }
 }
 
@@ -55,7 +64,7 @@ impl From<bool> for Value {
 
 impl From<String> for Value {
     fn from(value: String) -> Self {
-        Self::String(value)
+        Self::String(Rc::new(value))
     }
 }
 

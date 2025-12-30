@@ -13,7 +13,6 @@ impl Display for Token<'_> {
             If => "if",
             Nil => "nil",
             Or => "or",
-            Print => "print",
             Return => "return",
             Super => "super",
             This => "this",

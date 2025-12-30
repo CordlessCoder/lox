@@ -81,8 +81,15 @@ pub enum Expr<'s> {
     Ident(&'s str),
     Binary(Box<BinaryExpr<'s>>),
     Unary(Box<UnaryExpr<'s>>),
+    Call(Box<Call<'s>>),
     Grouped(Box<Self>),
     Assignment(Box<Assignment<'s>>),
+}
+
+#[derive(Debug, Clone)]
+pub struct Call<'s> {
+    pub callee: Expr<'s>,
+    pub arguments: Vec<Expr<'s>>,
 }
 
 #[derive(Debug, Clone)]
@@ -105,9 +112,6 @@ pub enum Stmt<'s> {
         body: Block<'s>,
     },
     Block(Block<'s>),
-    Print {
-        value: Expr<'s>,
-    },
     // /// A function definition with parameter names
     //     Function(Function<'s>),
     //     Use {
