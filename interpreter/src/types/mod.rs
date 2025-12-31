@@ -2,6 +2,7 @@ use std::{fmt::Display, rc::Rc, time::Instant};
 
 use crate::{
     LoxVm,
+    environment::Scope,
     eval::{Eval, EvalError, EvalResult},
     types::control_flow::{ControlFlow, cf_err, no_cf},
 };
@@ -14,7 +15,19 @@ pub enum Callable<'s> {
     Print,
     Now,
     Elapsed,
-    Fun(Rc<ast::Fun<'s>>),
+    Closure(Closure<'s>),
+}
+
+#[derive(Debug, Clone)]
+pub struct Closure<'s> {
+    pub fun: Rc<ast::Fun<'s>>,
+    pub environment: Scope<'s>,
+}
+
+impl PartialEq for Closure<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.fun, &other.fun) && self.environment == other.environment
+    }
 }
 
 impl PartialEq for Callable<'_> {
@@ -22,7 +35,7 @@ impl PartialEq for Callable<'_> {
         use Callable::*;
         match (self, other) {
             (Print, Print) | (Now, Now) | (Elapsed, Elapsed) => true,
-            (Fun(a), Fun(b)) => Rc::ptr_eq(a, b),
+            (Closure(a), Closure(b)) => a == b,
             _ => false,
         }
     }
@@ -33,7 +46,7 @@ impl PartialOrd for Callable<'_> {
         use std::cmp::Ordering;
         Some(match (self, other) {
             (Print, Print) | (Now, Now) | (Elapsed, Elapsed) => Ordering::Equal,
-            (Fun(a), Fun(b)) => return a.name.partial_cmp(b.name),
+            (Closure(a), Closure(b)) => return a.fun.name.partial_cmp(b.fun.name),
             _ => return None,
         })
     }
@@ -46,7 +59,7 @@ impl Display for Callable<'_> {
             Print => "print",
             Now => "now",
             Elapsed => "elapsed",
-            Fun(fun) => return write!(f, "fun {}", fun.name),
+            Closure(closure) => return write!(f, "fun {}", closure.fun.name),
         };
         f.write_str(name)
     }
@@ -59,10 +72,10 @@ impl<'s> Callable<'s> {
             Print => None,
             Now => Some(0),
             Elapsed => Some(1),
-            Fun(fun) => Some(fun.parameters.len()),
+            Closure(closure) => Some(closure.fun.parameters.len()),
         }
     }
-    pub fn call(&self, lox: &mut LoxVm<'s>, args: &[Value<'s>]) -> EvalResult<'s> {
+    pub fn call(&mut self, lox: &mut LoxVm<'s>, args: &[Value<'s>]) -> EvalResult<'s> {
         use Callable::*;
         match self {
             Print => {
@@ -88,13 +101,22 @@ impl<'s> Callable<'s> {
                 };
                 no_cf(time.elapsed().as_secs_f64().into())
             }
-            Fun(fun) => {
-                assert_eq!(args.len(), fun.parameters.len());
+            Closure(closure) => {
+                assert_eq!(args.len(), closure.fun.parameters.len());
+                // TODO; Do we need to inject the closure into itself?
+                // TODO: Proper name resolution pass to get rid of runtime environments
+                // This is where lox shows its runtime reference semantics, that I don't like.
+                // Next step: My own language, and proper compilation?
+                let callable = Callable::Closure(closure.clone());
+                let crate::types::Closure { fun, environment } = closure;
+                let _scope = lox.env.replace_guard(environment);
                 let _scope = lox.env.scope_guard();
-                for (parameter, argument) in fun.parameters.iter().zip(args) {
+                // Make sure the function can resolve to itself
+                lox.env.define(fun.name, Value::Callable(callable));
+                for (parameter, argument) in closure.fun.parameters.iter().zip(args) {
                     lox.env.define(parameter, argument.clone());
                 }
-                match fun.body.eval(lox) {
+                match closure.fun.body.eval(lox) {
                     ControlFlow::Return(ret) => ControlFlow::Value(ret.unwrap_or_default()),
                     ControlFlow::Value(_) => ControlFlow::Value(Value::default()),
                     ControlFlow::Break => ControlFlow::Error(EvalError::InvalidCF {

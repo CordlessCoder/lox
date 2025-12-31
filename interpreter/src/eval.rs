@@ -3,7 +3,7 @@ use std::rc::Rc;
 use crate::{
     LoxVm, require_no_cf,
     types::{
-        Callable, Value,
+        Callable, Closure, Value,
         control_flow::{ControlFlow, cf_err, no_cf},
     },
 };
@@ -77,8 +77,12 @@ impl<'s> Eval<'s> for Decl<'s> {
                 no_cf(Value::default())
             }
             Fun(fun) => {
-                lox.env
-                    .define(fun.name, Value::Callable(Callable::Fun(Rc::clone(fun))));
+                let captured = lox.env.current_scope().clone();
+                let callable = Value::Callable(Callable::Closure(Closure {
+                    fun: Rc::clone(fun),
+                    environment: captured,
+                }));
+                lox.env.define(fun.name, callable);
                 no_cf(Value::default())
             }
         }
@@ -256,7 +260,7 @@ impl<'s> Eval<'s> for LogicalExpr<'s> {
 impl<'s> Eval<'s> for Call<'s> {
     fn eval(&self, lox: &mut LoxVm<'s>) -> EvalResult<'s> {
         let Self { callee, arguments } = self;
-        let callee = match require_no_cf!(callee.eval(lox)) {
+        let mut callee = match require_no_cf!(callee.eval(lox)) {
             Value::Callable(callee) => callee,
             other => return cf_err(EvalError::InvalidCallee(other)),
         };

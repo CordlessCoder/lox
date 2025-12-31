@@ -2,7 +2,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{eval::EvalError, types::Value};
 
-type Scope<'s> = HashMap<&'s str, Value<'s>>;
+pub type Scope<'s> = HashMap<&'s str, Value<'s>>;
 #[derive(Debug, Clone)]
 struct Definition<'s> {
     name: &'s str,
@@ -27,6 +27,9 @@ struct EnvState<'s> {
 }
 
 impl<'s> EnvState<'s> {
+    pub fn current_scope(&self) -> &Scope<'s> {
+        &self.scope
+    }
     pub fn push_scope(&mut self) {
         self.layers.push(Vec::new());
     }
@@ -72,6 +75,17 @@ impl Drop for EnvScopeGuard<'_> {
     }
 }
 
+pub struct EnvReplaceScopeGuard<'replace, 's> {
+    env: Rc<RefCell<EnvState<'s>>>,
+    swap_with: &'replace mut Scope<'s>,
+}
+
+impl Drop for EnvReplaceScopeGuard<'_, '_> {
+    fn drop(&mut self) {
+        core::mem::swap(&mut self.env.borrow_mut().scope, self.swap_with);
+    }
+}
+
 impl<'s> Environment<'s> {
     #[must_use]
     pub fn new() -> Self {
@@ -86,6 +100,9 @@ impl<'s> Environment<'s> {
     pub fn assign(&mut self, name: &'s str, value: Value<'s>) -> Result<(), EvalError<'s>> {
         self.0.borrow_mut().assign(name, value)
     }
+    pub fn current_scope(&self) -> core::cell::Ref<'_, Scope<'s>> {
+        core::cell::Ref::map(self.0.borrow(), |s| s.current_scope())
+    }
     pub fn get(&self, name: &str) -> Option<Value<'s>> {
         self.0.borrow().get(name)
     }
@@ -93,6 +110,19 @@ impl<'s> Environment<'s> {
         self.0.borrow_mut().push_scope();
         EnvScopeGuard {
             env: Rc::clone(&self.0),
+        }
+    }
+    pub fn replace_guard<'replace>(
+        &mut self,
+        new_scope: &'replace mut Scope<'s>,
+    ) -> EnvReplaceScopeGuard<'replace, 's> {
+        {
+            let mut view = self.0.borrow_mut();
+            core::mem::swap(&mut view.scope, new_scope);
+        }
+        EnvReplaceScopeGuard {
+            env: Rc::clone(&self.0),
+            swap_with: new_scope,
         }
     }
 }
