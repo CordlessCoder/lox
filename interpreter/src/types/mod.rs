@@ -1,4 +1,4 @@
-use std::{fmt::Display, rc::Rc, time::Instant};
+use std::{cell::RefCell, fmt::Display, rc::Rc, time::Instant};
 
 use crate::{
     LoxVm,
@@ -21,7 +21,7 @@ pub enum Callable<'s> {
 #[derive(Debug, Clone)]
 pub struct Closure<'s> {
     pub fun: Rc<ast::Fun<'s>>,
-    pub environment: Scope<'s>,
+    pub environment: Rc<RefCell<Scope<'s>>>,
 }
 
 impl PartialEq for Closure<'_> {
@@ -109,14 +109,15 @@ impl<'s> Callable<'s> {
                 // Next step: My own language, and proper compilation?
                 let callable = Callable::Closure(closure.clone());
                 let crate::types::Closure { fun, environment } = closure;
-                let _scope = lox.env.replace_guard(environment);
-                let _scope = lox.env.scope_guard();
+                let mut env = environment.borrow().clone();
+                let _replace = lox.env.replace_guard(&mut env);
                 // Make sure the function can resolve to itself
                 lox.env.define(fun.name, Value::Callable(callable));
-                for (parameter, argument) in closure.fun.parameters.iter().zip(args) {
+                let _scope = lox.env.scope_guard();
+                for (parameter, argument) in fun.parameters.iter().zip(args) {
                     lox.env.define(parameter, argument.clone());
                 }
-                match closure.fun.body.eval(lox) {
+                let val = match fun.body.eval(lox) {
                     ControlFlow::Return(ret) => ControlFlow::Value(ret.unwrap_or_default()),
                     ControlFlow::Value(_) => ControlFlow::Value(Value::default()),
                     ControlFlow::Break => ControlFlow::Error(EvalError::InvalidCF {
@@ -128,7 +129,11 @@ impl<'s> Callable<'s> {
                         context: "without an enclosing loop",
                     }),
                     ControlFlow::Error(err) => ControlFlow::Error(err),
-                }
+                };
+                core::mem::drop(_scope);
+                core::mem::drop(_replace);
+                *environment.borrow_mut() = env;
+                val
             }
         }
     }

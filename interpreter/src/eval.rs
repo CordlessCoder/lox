@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     LoxVm, require_no_cf,
@@ -80,7 +80,7 @@ impl<'s> Eval<'s> for Decl<'s> {
                 let captured = lox.env.current_scope().clone();
                 let callable = Value::Callable(Callable::Closure(Closure {
                     fun: Rc::clone(fun),
-                    environment: captured,
+                    environment: Rc::new(RefCell::new(captured)),
                 }));
                 lox.env.define(fun.name, callable);
                 no_cf(Value::default())
